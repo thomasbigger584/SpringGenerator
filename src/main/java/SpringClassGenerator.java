@@ -1,8 +1,12 @@
-import com.squareup.javapoet.JavaFile;
-import com.squareup.javapoet.TypeSpec;
+import com.squareup.javapoet.*;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 
 import javax.lang.model.element.Modifier;
+import javax.persistence.Entity;
+import javax.persistence.Table;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -52,9 +56,26 @@ public class SpringClassGenerator {
 
         String domainPackage = packageName + ".domain";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityName)
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                .build();
+        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityName).
+
+                addModifiers(Modifier.PUBLIC, Modifier.FINAL).
+
+                addSuperinterface(Serializable.class).
+                addField(FieldSpec.
+                        builder(TypeName.LONG, "serialVersionUID",
+                                Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
+                        initializer("1").
+                        build()).
+
+                addAnnotation(Entity.class).
+                addAnnotation(AnnotationSpec.builder(Table.class).
+                        addMember("name", "\"" + entityName.toLowerCase() + "\"").build()).
+                addAnnotation(AnnotationSpec.builder(Cache.class).
+                        addMember("usage", "$T.$L", CacheConcurrencyStrategy.class,
+                                CacheConcurrencyStrategy.NONSTRICT_READ_WRITE.name()).
+                        build()).
+
+                build();
 
         return JavaFile.builder(domainPackage, jpaEntityTypeSpec).build();
     }
@@ -73,22 +94,22 @@ public class SpringClassGenerator {
 
     private static JavaFile createMapper(String packageName, String entityName) {
 
-        String repositoryPackage = packageName + ".service.mapper";
-        String entityRepository = entityName + "Mapper";
+        String mapperPackage = packageName + ".service.mapper";
+        String entityMapper = entityName + "Mapper";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
+        TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
                 .addModifiers(Modifier.PUBLIC)
                 .build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).build();
+        return JavaFile.builder(mapperPackage, jpaEntityTypeSpec).build();
     }
 
     private static JavaFile createService(String packageName, String entityName) {
 
         String repositoryPackage = packageName + ".service";
-        String entityRepository = entityName + "Service";
+        String entityService = entityName + "Service";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository)
+        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityService)
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .build();
 
