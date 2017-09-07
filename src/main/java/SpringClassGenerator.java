@@ -1,6 +1,7 @@
 import com.squareup.javapoet.*;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 import javax.lang.model.element.Modifier;
 import javax.persistence.Entity;
@@ -77,7 +78,9 @@ public class SpringClassGenerator {
 
                 build();
 
-        return JavaFile.builder(domainPackage, jpaEntityTypeSpec).build();
+        return JavaFile.builder(domainPackage, jpaEntityTypeSpec).
+                skipJavaLangImports(true).
+                build();
     }
 
     private static JavaFile createRepository(String packageName, String entityName) {
@@ -87,9 +90,13 @@ public class SpringClassGenerator {
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
                 .addModifiers(Modifier.PUBLIC)
+                .addSuperinterface(ParameterizedTypeName.get(ClassName.get(JpaRepository.class),
+                        ClassName.bestGuess(entityName), ClassName.get(Long.class)))
                 .build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).build();
+        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
+                skipJavaLangImports(true).
+                build();
     }
 
     private static JavaFile createMapper(String packageName, String entityName) {
@@ -113,7 +120,9 @@ public class SpringClassGenerator {
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).build();
+        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
+                skipJavaLangImports(true).
+                build();
     }
 
     private static JavaFile createResource(String packageName, String entityName) {
@@ -125,6 +134,9 @@ public class SpringClassGenerator {
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).build();
+
+        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
+                skipJavaLangImports(true).
+                build();
     }
 }
