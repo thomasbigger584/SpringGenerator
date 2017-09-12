@@ -2,6 +2,10 @@ import com.squareup.javapoet.*;
 import org.hibernate.annotations.Cache;
 import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.lang.model.element.Modifier;
 import javax.persistence.Entity;
@@ -22,12 +26,12 @@ public class SpringClassGenerator {
 
         Log.e("Enter project location: ");
 //        String projectLocation = scanner.next();
-        String projectLocation = "/Users/thomasbigger/Desktop/projects/backend/incident-logger-backend";
+        String projectLocation = "/Users/thomasbigger/Desktop/projects/backend/fans-backend";
         String javaSourceLocation = projectLocation + "/src/main/java/";
 
         Log.e("Enter package name: ");
 //        String packageName = scanner.next();
-        String packageName = "com.pa.twb.incidentlogger";
+        String packageName = "com.pa.backend";
 
         Log.e("Enter entity name: ");
         String entityName = scanner.next();
@@ -91,7 +95,7 @@ public class SpringClassGenerator {
         TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(ParameterizedTypeName.get(ClassName.get(JpaRepository.class),
-                        ClassName.bestGuess(entityName), ClassName.get(Long.class)))
+                        ClassName.get(packageName + ".domain", entityName), ClassName.get(Long.class)))
                 .build();
 
         return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
@@ -117,7 +121,9 @@ public class SpringClassGenerator {
         String entityService = entityName + "Service";
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityService)
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+                .addModifiers(Modifier.PUBLIC)
+                .addAnnotation(Service.class)
+                .addAnnotation(Transactional.class)
                 .build();
 
         return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
@@ -130,10 +136,16 @@ public class SpringClassGenerator {
         String repositoryPackage = packageName + ".web.rest";
         String entityRepository = entityName + "Resource";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository)
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                .build();
-
+        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(RestController.class).
+                addAnnotation(AnnotationSpec.builder(RequestMapping.class).
+                        addMember("value", "\"/api/" + entityName.toLowerCase() + "\"").
+                        build()).
+                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build()).
+                build();
 
         return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
                 skipJavaLangImports(true).
