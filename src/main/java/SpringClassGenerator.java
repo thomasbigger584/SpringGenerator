@@ -120,11 +120,36 @@ public class SpringClassGenerator {
         String repositoryPackage = packageName + ".service";
         String entityService = entityName + "Service";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityService)
-                .addModifiers(Modifier.PUBLIC)
-                .addAnnotation(Service.class)
-                .addAnnotation(Transactional.class)
-                .build();
+        final ClassName repositoryClassName =
+                ClassName.get(packageName + ".repository", entityName + "Repository");
+        final String repositoryVarName = entityName.toLowerCase() + "Repository";
+
+        FieldSpec repositoryField = FieldSpec.builder(repositoryClassName,
+                repositoryVarName, Modifier.PRIVATE, Modifier.FINAL).build();
+
+        final ClassName mapperClassName =
+                ClassName.get(packageName + ".service.mapper", entityName + "Mapper");
+        final String mapperVarName = entityName.toLowerCase() + "Mapper";
+
+        FieldSpec mapperField = FieldSpec.builder(mapperClassName,
+                mapperVarName, Modifier.PRIVATE, Modifier.FINAL).build();
+
+        MethodSpec constructor = MethodSpec.constructorBuilder().
+                addModifiers(Modifier.PUBLIC).
+                addParameter(repositoryClassName, repositoryVarName).
+                addParameter(mapperClassName, mapperVarName).
+                addStatement("this." + repositoryVarName + " = " + repositoryVarName).
+                addStatement("this." + mapperVarName + " = " + mapperVarName).
+                build();
+
+        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityService).
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(Service.class).
+                addAnnotation(Transactional.class).
+                addField(repositoryField).
+                addField(mapperField).
+                addMethod(constructor).
+                build();
 
         return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
                 skipJavaLangImports(true).
