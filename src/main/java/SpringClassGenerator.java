@@ -133,8 +133,21 @@ public class SpringClassGenerator {
 
     private static JavaFile createResource(String packageName, String entityName) {
 
-        String repositoryPackage = packageName + ".web.rest";
-        String entityRepository = entityName + "Resource";
+        final String repositoryPackage = packageName + ".web.rest";
+        final String entityRepository = entityName + "Resource";
+
+        final ClassName serviceClassName =
+                ClassName.get(packageName + ".service", entityName + "Service");
+        final String serviceVarName = entityName.toLowerCase() + "Service";
+
+        FieldSpec serviceField = FieldSpec.builder(serviceClassName,
+                serviceVarName, Modifier.PRIVATE, Modifier.FINAL).build();
+
+        MethodSpec constructor = MethodSpec.constructorBuilder().
+                addModifiers(Modifier.PUBLIC).
+                addParameter(serviceClassName, serviceVarName).
+                addStatement("this." + serviceVarName + " = " + serviceVarName).
+                build();
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
@@ -145,6 +158,8 @@ public class SpringClassGenerator {
                 addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"unused\"").
                         build()).
+                addField(serviceField).
+                addMethod(constructor).
                 build();
 
         return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
