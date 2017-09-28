@@ -26,12 +26,12 @@ public class SpringClassGenerator {
 
         Log.e("Enter project location: ");
 //        String projectLocation = scanner.next();
-        String projectLocation = "/Users/thomasbigger/Desktop/projects/backend/fans-backend";
+        String projectLocation = "/Users/thomasbigger/Desktop/projects/backend/chatbot-backend";
         String javaSourceLocation = projectLocation + "/src/main/java/";
 
         Log.e("Enter package name: ");
 //        String packageName = scanner.next();
-        String packageName = "com.pa.backend";
+        String packageName = "com.pa.twb";
 
         Log.e("Enter entity name: ");
         String entityName = scanner.next();
