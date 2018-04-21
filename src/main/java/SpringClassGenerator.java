@@ -24,16 +24,16 @@ public class SpringClassGenerator {
 
         Scanner scanner = new Scanner(System.in);
 
-        Log.e("Enter project location: ");
+        System.out.println("Enter project location: ");
 //        String projectLocation = scanner.next();
         String projectLocation = "/Users/thomasbigger/Desktop/projects/backend/chatbot-backend";
         String javaSourceLocation = projectLocation + "/src/main/java/";
 
-        Log.e("Enter package name: ");
+        System.out.println("Enter package name: ");
 //        String packageName = scanner.next();
         String packageName = "com.pa.twb";
 
-        Log.e("Enter entity name: ");
+        System.out.println("Enter entity name: ");
         String entityName = scanner.next();
 
         entityName = entityName.substring(0, 1).toUpperCase() + entityName.substring(1);
@@ -82,9 +82,7 @@ public class SpringClassGenerator {
 
                 build();
 
-        return JavaFile.builder(domainPackage, jpaEntityTypeSpec).
-                skipJavaLangImports(true).
-                build();
+        return buildJavaFile(domainPackage, jpaEntityTypeSpec);
     }
 
     private static JavaFile createRepository(String packageName, String entityName) {
@@ -98,9 +96,7 @@ public class SpringClassGenerator {
                         ClassName.get(packageName + ".domain", entityName), ClassName.get(Long.class)))
                 .build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
-                skipJavaLangImports(true).
-                build();
+        return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
     private static JavaFile createMapper(String packageName, String entityName) {
@@ -108,11 +104,11 @@ public class SpringClassGenerator {
         String mapperPackage = packageName + ".service.mapper";
         String entityMapper = entityName + "Mapper";
 
-        TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
+        TypeSpec mapperTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
                 .addModifiers(Modifier.PUBLIC)
                 .build();
 
-        return JavaFile.builder(mapperPackage, jpaEntityTypeSpec).build();
+        return buildJavaFile(mapperPackage, mapperTypeSpec);
     }
 
     private static JavaFile createService(String packageName, String entityName) {
@@ -151,9 +147,7 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
-                skipJavaLangImports(true).
-                build();
+        return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
     private static JavaFile createResource(String packageName, String entityName) {
@@ -187,7 +181,11 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 build();
 
-        return JavaFile.builder(repositoryPackage, jpaEntityTypeSpec).
+        return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
+    }
+
+    private static JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
+        return JavaFile.builder(domainPackage, jpaEntityTypeSpec).
                 skipJavaLangImports(true).
                 build();
     }
