@@ -103,3 +103,4 @@ gradle-app.setting
 # gradle/wrapper/gradle-wrapper.properties
 
 # End of https://www.gitignore.io/api/java,gradle,java-web,intellij+all
+src/test/
