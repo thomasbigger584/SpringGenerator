@@ -12,9 +12,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 
 public class SpringClassGenerator {
+
+    private static final String[] ENTITY_NAMES = {
+        "Asset", "AssetCategory", "CallCenterUser", "Maintenance", "SessionLog", "Site", "SiteOwnerUser", "SiteSession", "UserSession", "UserSessionHealthCheck", "WorkerUser", "WorkOrder"
+    };
 
     private static final String PROJECT_LOCATION = "/Users/thomasbigger/Desktop/projects/backend/skylark-backend";
     private static final String JAVA_SRC_LOCATION = PROJECT_LOCATION + "/src/main/java/";
@@ -23,11 +26,12 @@ public class SpringClassGenerator {
     private static final boolean SUPPORTS_ELASTIC_SEARCH = true;
 
     public static void main(String... args) {
+        for (String entityName : ENTITY_NAMES) {
+            generate(entityName);
+        }
+    }
 
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("Enter entity name: ");
-        String entityName = scanner.next();
+    private static void generate(String entityName) {
 
         entityName = entityName.substring(0, 1).toUpperCase() + entityName.substring(1);
 
