@@ -17,6 +17,27 @@ apply plugin: 'org.springframework.boot'
 
 sourceCompatibility = JavaVersion.VERSION_1_8
 
+
+jar {
+    manifest {
+        attributes("Manifest-Version": "1.0",
+                "Main-Class": "SpringClassGenerator");
+    }
+}
+
+task fatJar(type: Jar) {
+    manifest.from jar.manifest
+    classifier = 'all'
+    from {
+        configurations.runtime.collect { it.isDirectory() ? it : zipTree(it) }
+    } {
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    with jar
+}
+
 repositories {
     mavenCentral()
     maven { url "https://repository.jboss.org/nexus/content/repositories/releases" }
