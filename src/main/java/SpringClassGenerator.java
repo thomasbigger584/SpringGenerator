@@ -16,7 +16,8 @@ import java.util.List;
 public class SpringClassGenerator {
 
     private static final String[] ENTITY_NAMES = {
-        "Asset", "AssetCategory", "CallCenterUser", "Maintenance", "SessionLog", "Site", "SiteOwnerUser", "SiteSession", "UserSession", "UserSessionHealthCheck", "WorkerUser", "WorkOrder"
+        "Asset", "AssetCategory", "CallCenterUser", "Maintenance", "SessionLog", "Site",
+            "SiteOwnerUser", "SiteSession", "UserSession", "UserSessionHealthCheck", "WorkerUser", "WorkOrder"
     };
 
     private static final String PROJECT_LOCATION = "/Users/thomasbigger/Desktop/projects/backend/skylark-backend";
