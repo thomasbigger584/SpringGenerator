@@ -1,3 +1,5 @@
+import com.beust.jcommander.JCommander;
+import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
 import org.mapstruct.Mapper;
 import org.springframework.stereotype.Repository;
@@ -15,55 +17,63 @@ import java.util.List;
 
 public class SpringClassGenerator {
 
-    private static final String[] ENTITY_NAMES = {
-        "Asset", "AssetCategory", "CallCenterUser", "Maintenance", "SessionLog", "Site",
-            "SiteOwnerUser", "SiteSession", "UserSession", "UserSessionHealthCheck", "WorkerUser", "WorkOrder"
-    };
+    @Parameter(names = "-e", description = "Entity to parse")
+    private List<String> entities = new ArrayList<>();
 
-    private static final String PROJECT_LOCATION = "/Users/thomasbigger/Desktop/projects/backend/skylark-backend";
-    private static final String JAVA_SRC_LOCATION = PROJECT_LOCATION + "/src/main/java/";
-    private static final String PACKAGE_NAME = "com.pa.twb";
-    private static final String EXTENSION_PREFIX = "Ext";
-    private static final boolean SUPPORTS_ELASTIC_SEARCH = true;
+    @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Java Src package")
+    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/skylark-backend/src/main/java/");
+
+    @Parameter(names = "--ep", description = "Extension Prefix for generated files")
+    private String extensionPrefix = "Ext";
+
+    @Parameter(names = "--pn", description = "Package name for generated files")
+    private String packageName = "com.pa.twb";
+
+    @Parameter(names = "-es", description = "Supports elastic search")
+    private boolean supportsElasticSearch = true;
 
     public static void main(String... args) {
-        for (String entityName : ENTITY_NAMES) {
-            generate(entityName);
-        }
+        SpringClassGenerator scg = new SpringClassGenerator();
+        JCommander.newBuilder()
+                .addObject(scg)
+                .build()
+                .parse(args);
+        scg.generate();
     }
 
-    private static void generate(String entityName) {
+    private void generate() {
 
-        entityName = entityName.substring(0, 1).toUpperCase() + entityName.substring(1);
+        for (String entityName : entities) {
 
-        List<JavaFile> javaFiles = new ArrayList<>();
+            entityName = entityName.substring(0, 1).toUpperCase() + entityName.substring(1);
 
-        javaFiles.add(createRepository(entityName));
-        javaFiles.add(createMapper(entityName));
-        if (SUPPORTS_ELASTIC_SEARCH) {
-            javaFiles.add(createSearchRespository(entityName));
-        }
-        javaFiles.add(createService(entityName));
-        javaFiles.add(createResource(entityName));
+            List<JavaFile> javaFiles = new ArrayList<>();
 
-        Path outputFileLocation = Paths.get(JAVA_SRC_LOCATION);
-
-        try {
-            for (JavaFile javaFile : javaFiles) {
-                javaFile.writeTo(outputFileLocation);
+            javaFiles.add(createRepository(entityName));
+            javaFiles.add(createMapper(entityName));
+            if (supportsElasticSearch) {
+                javaFiles.add(createSearchRespository(entityName));
             }
-        } catch (IOException e) {
-            e.printStackTrace();
+            javaFiles.add(createService(entityName));
+            javaFiles.add(createResource(entityName));
+
+            try {
+                for (JavaFile javaFile : javaFiles) {
+                    javaFile.writeTo(javaSrcPath);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    private static JavaFile createRepository(String entityName) {
+    private JavaFile createRepository(String entityName) {
 
-        String repositoryPackage = PACKAGE_NAME + ".repository." + EXTENSION_PREFIX.toLowerCase();
-        String entityRepository = EXTENSION_PREFIX + entityName + "Repository";
+        String repositoryPackage = packageName + ".repository." + extensionPrefix.toLowerCase();
+        String entityRepository = extensionPrefix + entityName + "Repository";
 
         final ClassName superRepoClassName =
-                ClassName.get(PACKAGE_NAME + ".repository", entityName + "Repository");
+                ClassName.get(packageName + ".repository", entityName + "Repository");
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
                 .addModifiers(Modifier.PUBLIC)
@@ -74,10 +84,10 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
-    private static JavaFile createMapper(String entityName) {
+    private JavaFile createMapper(String entityName) {
 
-        String mapperPackage = PACKAGE_NAME + ".service.mapper." + EXTENSION_PREFIX.toLowerCase();
-        String entityMapper = EXTENSION_PREFIX + entityName + "Mapper";
+        String mapperPackage = packageName + ".service.mapper." + extensionPrefix.toLowerCase();
+        String entityMapper = extensionPrefix + entityName + "Mapper";
 
         TypeSpec mapperTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
                 .addModifiers(Modifier.PUBLIC)
@@ -90,13 +100,13 @@ public class SpringClassGenerator {
         return buildJavaFile(mapperPackage, mapperTypeSpec);
     }
 
-    private static JavaFile createSearchRespository(String entityName) {
+    private JavaFile createSearchRespository(String entityName) {
 
-        String repositoryPackage = PACKAGE_NAME + ".repository.search." + EXTENSION_PREFIX.toLowerCase();
-        String entityRepository = EXTENSION_PREFIX + entityName + "SearchRepository";
+        String repositoryPackage = packageName + ".repository.search." + extensionPrefix.toLowerCase();
+        String entityRepository = extensionPrefix + entityName + "SearchRepository";
 
         final ClassName superRepoClassName =
-                ClassName.get(PACKAGE_NAME + ".repository.search", entityName + "SearchRepository");
+                ClassName.get(packageName + ".repository.search", entityName + "SearchRepository");
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
                 .addModifiers(Modifier.PUBLIC)
@@ -107,28 +117,28 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
-    private static JavaFile createService(String entityName) {
+    private JavaFile createService(String entityName) {
 
-        String servicePackage = PACKAGE_NAME + ".service." + EXTENSION_PREFIX.toLowerCase();
-        String entityService = EXTENSION_PREFIX + entityName + "Service";
+        String servicePackage = packageName + ".service." + extensionPrefix.toLowerCase();
+        String entityService = extensionPrefix + entityName + "Service";
 
         final ClassName repositoryClassName =
-                ClassName.get(PACKAGE_NAME + ".repository." + EXTENSION_PREFIX.toLowerCase(), EXTENSION_PREFIX + entityName + "Repository");
-        final String repositoryVarName = EXTENSION_PREFIX.toLowerCase() + entityName + "Repository";
+                ClassName.get(packageName + ".repository." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Repository");
+        final String repositoryVarName = extensionPrefix.toLowerCase() + entityName + "Repository";
 
         FieldSpec repositoryField = FieldSpec.builder(repositoryClassName,
                 repositoryVarName, Modifier.PRIVATE, Modifier.FINAL).build();
 
         final ClassName repositorySearchClassName =
-                ClassName.get(PACKAGE_NAME + ".repository.search." + EXTENSION_PREFIX.toLowerCase(), EXTENSION_PREFIX + entityName + "SearchRepository");
-        final String repositorySearchVarName = EXTENSION_PREFIX.toLowerCase() + entityName + "SearchRepository";
+                ClassName.get(packageName + ".repository.search." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "SearchRepository");
+        final String repositorySearchVarName = extensionPrefix.toLowerCase() + entityName + "SearchRepository";
 
         FieldSpec repositorySearchField = FieldSpec.builder(repositorySearchClassName,
                 repositorySearchVarName, Modifier.PRIVATE, Modifier.FINAL).build();
 
         final ClassName mapperClassName =
-                ClassName.get(PACKAGE_NAME + ".service.mapper." + EXTENSION_PREFIX.toLowerCase(), EXTENSION_PREFIX + entityName + "Mapper");
-        final String mapperVarName = EXTENSION_PREFIX.toLowerCase() + entityName + "Mapper";
+                ClassName.get(packageName + ".service.mapper." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Mapper");
+        final String mapperVarName = extensionPrefix.toLowerCase() + entityName + "Mapper";
 
         FieldSpec mapperField = FieldSpec.builder(mapperClassName,
                 mapperVarName, Modifier.PRIVATE, Modifier.FINAL).build();
@@ -138,12 +148,12 @@ public class SpringClassGenerator {
                 addParameter(repositoryClassName, repositoryVarName);
 
         String superStatement = "super(%s)";
-        String parameters = repositoryVarName + ((SUPPORTS_ELASTIC_SEARCH) ? ", " + repositorySearchVarName : "");
+        String parameters = repositoryVarName + ((supportsElasticSearch) ? ", " + repositorySearchVarName : "");
         superStatement = String.format(superStatement, parameters);
         constructorBuilder.addStatement(superStatement);
 
 
-        if (SUPPORTS_ELASTIC_SEARCH) {
+        if (supportsElasticSearch) {
             constructorBuilder.addParameter(repositorySearchClassName, repositorySearchVarName).
                     addStatement("this." + repositorySearchVarName + " = " + repositorySearchVarName);
         }
@@ -156,7 +166,7 @@ public class SpringClassGenerator {
         MethodSpec constructor = constructorBuilder.build();
 
         final ClassName superServiceClassName =
-                ClassName.get(PACKAGE_NAME + ".service", entityName + "Service");
+                ClassName.get(packageName + ".service", entityName + "Service");
 
         TypeSpec.Builder jpaEntityTypeSpecBuilder = TypeSpec.classBuilder(entityService).
                 addModifiers(Modifier.PUBLIC).
@@ -167,7 +177,7 @@ public class SpringClassGenerator {
                 addField(mapperField).
                 addMethod(constructor);
 
-        if (SUPPORTS_ELASTIC_SEARCH) {
+        if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
         }
 
@@ -176,13 +186,13 @@ public class SpringClassGenerator {
         return buildJavaFile(servicePackage, jpaEntityTypeSpec);
     }
 
-    private static JavaFile createResource(String entityName) {
+    private JavaFile createResource(String entityName) {
 
-        final String repositoryPackage = PACKAGE_NAME + ".web.rest." + EXTENSION_PREFIX.toLowerCase();
-        final String entityRepository = EXTENSION_PREFIX + entityName + "Resource";
+        final String repositoryPackage = packageName + ".web.rest." + extensionPrefix.toLowerCase();
+        final String entityRepository = extensionPrefix + entityName + "Resource";
 
         final ClassName serviceClassName =
-                ClassName.get(PACKAGE_NAME + ".service.ext", "Ext" + entityName + "Service");
+                ClassName.get(packageName + ".service.ext", "Ext" + entityName + "Service");
         final String serviceVarName = entityName.toLowerCase() + "Service";
 
         FieldSpec serviceField = FieldSpec.builder(serviceClassName,
@@ -219,7 +229,7 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
-    private static JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
+    private JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
         return JavaFile.builder(domainPackage, jpaEntityTypeSpec).
                 skipJavaLangImports(true).
                 indent("\t").
