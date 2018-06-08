@@ -2,6 +2,8 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
 import org.mapstruct.Mapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -226,6 +228,7 @@ public class SpringClassGenerator {
 
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
+                addModifiers(Modifier.PUBLIC).
                 returns(getDtoClassName).
                 addParameter(createDtoClassName, createDtoVarName).
                 addCode(CodeBlock.builder().
@@ -237,6 +240,10 @@ public class SpringClassGenerator {
 
         ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
         MethodSpec findMethodSpec = MethodSpec.methodBuilder("getById").
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(Transactional.class).
+                        addMember("readOnly", "true").
+                        build()).
                 returns(optionalEntityTypeName).
                 addParameter(Long.class, "id").
                 addStatement("return $T.ofNullable(findOne(id))", Optional.class).
@@ -244,14 +251,30 @@ public class SpringClassGenerator {
 
         ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
         MethodSpec findDtoMethodSpec = MethodSpec.methodBuilder("getDtoById").
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(Transactional.class).
+                        addMember("readOnly", "true").
+                        build()).
                 returns(optionalDtoTypeName).
                 addParameter(Long.class, "id").
                 addStatement("return getById(id).map($N::entityToGetDto)", mapperVarName).
                 build();
 
+        ParameterizedTypeName pagedDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
+        MethodSpec pagedDtoMethodSpec = MethodSpec.methodBuilder("getAllDto").
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(Transactional.class).
+                        addMember("readOnly", "true").
+                        build()).
+                returns(pagedDtoTypeName).
+                addParameter(Pageable.class, "pageable").
+                addStatement("return findAll(pageable).map($N::entityToGetDto)", mapperVarName).
+                build();
+
+
+
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
-
         TypeSpec.Builder jpaEntityTypeSpecBuilder = TypeSpec.classBuilder(entityService).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(Service.class).
@@ -262,7 +285,8 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(findMethodSpec).
-                addMethod(findDtoMethodSpec);
+                addMethod(findDtoMethodSpec).
+                addMethod(pagedDtoMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
