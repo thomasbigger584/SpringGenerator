@@ -4,6 +4,7 @@ import com.squareup.javapoet.*;
 import org.mapstruct.Mapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Repository;
@@ -76,6 +77,10 @@ public class SpringClassGenerator {
                 for (JavaFile javaFile : javaFiles) {
                     javaFile.writeTo(javaSrcPath);
                 }
+
+//                TODO: look at formatting these files
+//                https://www.jetbrains.com/help/idea/command-line-formatter.html
+
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -383,6 +388,22 @@ public class SpringClassGenerator {
                 build();
 
 
+        ParameterizedTypeName listDtoTypeName = ParameterizedTypeName.get(ClassName.get(List.class), getDtoClassName);
+        ParameterizedTypeName responseDtoTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), listDtoTypeName);
+        ParameterizedTypeName pageDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
+        ClassName paginationUtilClassName = ClassName.get(packageName + ".web.rest.util", "PaginationUtil");
+        MethodSpec getAllDtoMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
+                addAnnotation(GetMapping.class).
+                addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
+                addStatement("$T page = $N.getAllDto(pageable)", pageDtoTypeName, serviceVarName).
+                addStatement("$T headers = $T.generatePaginationHttpHeaders(page, \"/api/ext-$L\")",
+                        HttpHeaders.class, paginationUtilClassName, resourceUriName.toLowerCase()).
+                addStatement("return new $T<>(page.getContent(), headers, $T.OK)", ResponseEntity.class, HttpStatus.class).
+                returns(responseDtoTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
+
+
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(RestController.class).
@@ -397,6 +418,7 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(getByIdMethodSpec).
+                addMethod(getAllDtoMethodSpec).
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
