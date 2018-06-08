@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class SpringClassGenerator {
 
@@ -234,6 +235,19 @@ public class SpringClassGenerator {
                         build()).
                 build();
 
+        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
+        MethodSpec findMethodSpec = MethodSpec.methodBuilder("getById").
+                returns(optionalEntityTypeName).
+                addParameter(Long.class, "id").
+                addStatement("return $T.ofNullable(findOne(id))", Optional.class).
+                build();
+
+        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
+        MethodSpec findDtoMethodSpec = MethodSpec.methodBuilder("getDtoById").
+                returns(optionalDtoTypeName).
+                addParameter(Long.class, "id").
+                addStatement("return getById(id).map($N::entityToGetDto)", mapperVarName).
+                build();
 
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
@@ -246,7 +260,9 @@ public class SpringClassGenerator {
                 addField(repositoryField).
                 addField(mapperField).
                 addMethod(constructor).
-                addMethod(createMethodSpec);
+                addMethod(createMethodSpec).
+                addMethod(findMethodSpec).
+                addMethod(findDtoMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
