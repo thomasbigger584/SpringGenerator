@@ -4,13 +4,17 @@ import com.squareup.javapoet.*;
 import org.mapstruct.Mapper;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.lang.model.element.Modifier;
+import javax.validation.Valid;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -92,6 +96,9 @@ public class SpringClassGenerator {
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(superRepoClassName)
                 .addAnnotation(Repository.class)
+                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build())
                 .build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
@@ -104,6 +111,9 @@ public class SpringClassGenerator {
 
         TypeSpec dtoTypeSpec = TypeSpec.classBuilder(entityDto)
                 .addModifiers(Modifier.PUBLIC)
+                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build())
                 .build();
 
         return buildJavaFile(dtoPackage, dtoTypeSpec);
@@ -143,6 +153,9 @@ public class SpringClassGenerator {
                         addMember("componentModel", "\"spring\"").
                         addMember("uses", "{,}").
                         build())
+                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build())
                 .addMethod(createToEntityMethod)
                 .addMethod(getToEntityMethod)
                 .build();
@@ -162,6 +175,9 @@ public class SpringClassGenerator {
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(superRepoClassName)
                 .addAnnotation(Repository.class)
+                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build())
                 .build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
@@ -271,14 +287,15 @@ public class SpringClassGenerator {
                 addStatement("return findAll(pageable).map($N::entityToGetDto)", mapperVarName).
                 build();
 
-
-
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
         TypeSpec.Builder jpaEntityTypeSpecBuilder = TypeSpec.classBuilder(entityService).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(Service.class).
                 addAnnotation(Transactional.class).
+                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build()).
                 superclass(superServiceClassName).
                 addField(repositoryField).
                 addField(mapperField).
@@ -304,7 +321,7 @@ public class SpringClassGenerator {
 
         final ClassName serviceClassName =
                 ClassName.get(packageName + ".service.ext", "Ext" + entityName + "Service");
-        final String serviceVarName = entityName.toLowerCase() + "Service";
+        final String serviceVarName = extensionPrefix.toLowerCase() + entityName + "Service";
 
         FieldSpec serviceField = FieldSpec.builder(serviceClassName,
                 serviceVarName, Modifier.PRIVATE, Modifier.FINAL).build();
@@ -324,11 +341,32 @@ public class SpringClassGenerator {
             }
         }
 
+        ClassName createDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Create" + entityName + "DTO");
+        String createDtoVarName = "create" + entityName + "Dto";
+        ClassName getDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Get" + entityName + "DTO");
+        ParameterizedTypeName getResponseEntityTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), getDtoClassName);
 
-//        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
-//                returns(ParameterizedTypeName.get(ResponseEntity.class), WildcardTypeName.get())
-//                addModifiers(Modifier.PUBLIC).
-//                build();
+        ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.util", "HeaderUtil");
+
+        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
+                addAnnotation(AnnotationSpec.builder(PostMapping.class).
+                        addMember("value", "\"/create\"").
+                        build()).
+                addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).addAnnotation(Valid.class).build()).
+                addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
+                addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                returns(getResponseEntityTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
+
+
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        FieldSpec entityNameFieldSpec = FieldSpec.builder(String.class, "ENTITY_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
+                initializer("\"" + entityVarName + "\"").build();
 
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
@@ -341,7 +379,9 @@ public class SpringClassGenerator {
                         addMember("value", "\"unused\"").
                         build()).
                 addField(serviceField).
+                addField(entityNameFieldSpec).
                 addMethod(constructor).
+                addMethod(createMethodSpec).
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
