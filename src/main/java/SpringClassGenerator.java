@@ -9,9 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.lang.model.element.Modifier;
 import javax.validation.Valid;
@@ -233,7 +231,6 @@ public class SpringClassGenerator {
         ClassName getDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Get" + entityName + "DTO");
-
         ClassName createDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
@@ -341,6 +338,11 @@ public class SpringClassGenerator {
             }
         }
 
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        FieldSpec entityNameFieldSpec =
+                FieldSpec.builder(String.class, "ENTITY_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
+                        initializer("\"" + entityVarName + "\"").build();
+
         ClassName createDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
@@ -352,7 +354,7 @@ public class SpringClassGenerator {
 
         ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.util", "HeaderUtil");
 
-        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
+        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create" + entityName).
                 addAnnotation(AnnotationSpec.builder(PostMapping.class).
                         addMember("value", "\"/create\"").
                         build()).
@@ -364,9 +366,21 @@ public class SpringClassGenerator {
                 build();
 
 
-        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-        FieldSpec entityNameFieldSpec = FieldSpec.builder(String.class, "ENTITY_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
-                initializer("\"" + entityVarName + "\"").build();
+        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
+        ClassName responseUtilClassName = ClassName.get("io.github.jhipster.web.util", "ResponseUtil");
+        MethodSpec getByIdMethodSpec = MethodSpec.methodBuilder("get" + entityName + "ById").
+                addAnnotation(AnnotationSpec.builder(GetMapping.class).
+                        addMember("value", "\"/{id}\"").
+                        build()).
+                addParameter(ParameterSpec.builder(Long.class, "id").
+                        addAnnotation(AnnotationSpec.builder(PathVariable.class).
+                                addMember("value", "\"id\"").
+                                build()).build()).
+                addStatement("$T result = $N.getDtoById(id)", optionalDtoTypeName, serviceVarName).
+                addStatement("return $T.wrapOrNotFound(result)", responseUtilClassName).
+                returns(getResponseEntityTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
 
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
@@ -382,6 +396,7 @@ public class SpringClassGenerator {
                 addField(entityNameFieldSpec).
                 addMethod(constructor).
                 addMethod(createMethodSpec).
+                addMethod(getByIdMethodSpec).
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
