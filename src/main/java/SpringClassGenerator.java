@@ -29,15 +29,23 @@ public class SpringClassGenerator {
     @Parameter(names = "--pn", description = "Package name for generated files")
     private String packageName = "com.pa.twb";
 
-    @Parameter(names = "-es", description = "Supports elastic search")
+    @Parameter(names = "--es", description = "Supports elastic search")
     private boolean supportsElasticSearch = true;
+
+    @Parameter(names = "-d", description = "Turn on debugging")
+    private boolean isDebug = false;
 
     public static void main(String... args) {
         SpringClassGenerator scg = new SpringClassGenerator();
-        JCommander.newBuilder()
+        JCommander jCommander = JCommander.newBuilder()
                 .addObject(scg)
-                .build()
-                .parse(args);
+                .build();
+        jCommander.parse(args);
+
+        if (scg.isDebug) {
+            scg.entities.add("AssetCategory");
+        }
+
         scg.generate();
     }
 
@@ -50,6 +58,8 @@ public class SpringClassGenerator {
             List<JavaFile> javaFiles = new ArrayList<>();
 
             javaFiles.add(createRepository(entityName));
+            javaFiles.add(createDto("Get", entityName));
+            javaFiles.add(createDto("Create", entityName));
             javaFiles.add(createMapper(entityName));
             if (supportsElasticSearch) {
                 javaFiles.add(createSearchRespository(entityName));
@@ -82,6 +92,18 @@ public class SpringClassGenerator {
                 .build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
+    }
+
+    private JavaFile createDto(String dtoPrefix, String entityName) {
+
+        String dtoPackage = packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase();
+        String entityDto = dtoPrefix + entityName + "DTO";
+
+        TypeSpec dtoTypeSpec = TypeSpec.classBuilder(entityDto)
+                .addModifiers(Modifier.PUBLIC)
+                .build();
+
+        return buildJavaFile(dtoPackage, dtoTypeSpec);
     }
 
     private JavaFile createMapper(String entityName) {
@@ -212,6 +234,13 @@ public class SpringClassGenerator {
                 resourceUriName = resourceUriName.concat("-");
             }
         }
+
+
+//        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
+//                returns(ParameterizedTypeName.get(ResponseEntity.class), WildcardTypeName.get())
+//                addModifiers(Modifier.PUBLIC).
+//                build();
+
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
