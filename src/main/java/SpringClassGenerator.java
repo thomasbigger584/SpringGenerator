@@ -199,7 +199,6 @@ public class SpringClassGenerator {
         superStatement = String.format(superStatement, parameters);
         constructorBuilder.addStatement(superStatement);
 
-
         if (supportsElasticSearch) {
             constructorBuilder.addParameter(repositorySearchClassName, repositorySearchVarName).
                     addStatement("this." + repositorySearchVarName + " = " + repositorySearchVarName);
@@ -209,8 +208,32 @@ public class SpringClassGenerator {
                 addStatement("this." + repositoryVarName + " = " + repositoryVarName).
                 addStatement("this." + mapperVarName + " = " + mapperVarName);
 
-
         MethodSpec constructor = constructorBuilder.build();
+
+
+        ClassName getDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Get" + entityName + "DTO");
+
+        ClassName createDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Create" + entityName + "DTO");
+        String createDtoVarName = "create" + entityName.toLowerCase() + "Dto";
+
+        final ClassName entityClassName =
+                ClassName.get(packageName + ".domain", entityName);
+
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
+                returns(getDtoClassName).
+                addParameter(createDtoClassName, createDtoVarName).
+                addCode(CodeBlock.builder().
+                        addStatement("$T $N = $N.createDtoToEntity($N)", entityClassName, entityVarName, mapperVarName, createDtoVarName).
+                        addStatement("$N = save($N)", entityVarName, entityVarName).
+                        addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
+                        build()).
+                build();
+
 
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
@@ -222,7 +245,8 @@ public class SpringClassGenerator {
                 superclass(superServiceClassName).
                 addField(repositoryField).
                 addField(mapperField).
-                addMethod(constructor);
+                addMethod(constructor).
+                addMethod(createMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
