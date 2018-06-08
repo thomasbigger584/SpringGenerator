@@ -111,12 +111,37 @@ public class SpringClassGenerator {
         String mapperPackage = packageName + ".service.mapper." + extensionPrefix.toLowerCase();
         String entityMapper = extensionPrefix + entityName + "Mapper";
 
+        final ClassName entityClassName =
+                ClassName.get(packageName + ".domain", entityName);
+
+        ClassName createDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Create" + entityName + "DTO");
+        MethodSpec createToEntityMethod = MethodSpec.methodBuilder("createDtoToEntity").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                returns(entityClassName).
+                addParameter(createDtoClassName, "create" + entityName.toLowerCase() + "Dto").
+                build();
+
+        ClassName getDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Get" + entityName + "DTO");
+
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        MethodSpec getToEntityMethod = MethodSpec.methodBuilder("entityToGetDto").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                returns(getDtoClassName).
+                addParameter(entityClassName, entityVarName).
+                build();
+
         TypeSpec mapperTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(AnnotationSpec.builder(Mapper.class).
                         addMember("componentModel", "\"spring\"").
                         addMember("uses", "{,}").
                         build())
+                .addMethod(createToEntityMethod)
+                .addMethod(getToEntityMethod)
                 .build();
 
         return buildJavaFile(mapperPackage, mapperTypeSpec);
