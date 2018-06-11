@@ -363,7 +363,7 @@ public class SpringClassGenerator {
                 addAnnotation(AnnotationSpec.builder(PostMapping.class).
                         addMember("value", "\"/create\"").
                         build()).
-                addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).addAnnotation(Valid.class).build()).
+                addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).addAnnotation(Valid.class).addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
                 addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(getResponseEntityTypeName).
