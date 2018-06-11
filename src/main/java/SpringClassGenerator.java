@@ -427,7 +427,7 @@ public class SpringClassGenerator {
     private JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
         return JavaFile.builder(domainPackage, jpaEntityTypeSpec).
                 skipJavaLangImports(true).
-                indent("\t").
+                indent("    ").
                 build();
     }
 }
