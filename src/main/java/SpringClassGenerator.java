@@ -41,6 +41,9 @@ public class SpringClassGenerator {
     @Parameter(names = "-d", description = "Turn on debugging")
     private boolean isDebug = false;
 
+    @Parameter(names = "--help", help = true)
+    private boolean help = false;
+
     public static void main(String... args) {
         SpringClassGenerator scg = new SpringClassGenerator();
         JCommander jCommander = JCommander.newBuilder()
@@ -48,8 +51,9 @@ public class SpringClassGenerator {
                 .build();
         jCommander.parse(args);
 
-        if (scg.isDebug) {
-            scg.entities.add("AssetCategory");
+        if (scg.help) {
+            jCommander.usage();
+            return;
         }
 
         scg.generate();
