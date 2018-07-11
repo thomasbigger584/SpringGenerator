@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.lang.model.element.Modifier;
 import javax.validation.Valid;
+import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -68,9 +70,9 @@ public class SpringClassGenerator {
             List<JavaFile> javaFiles = new ArrayList<>();
 
             javaFiles.add(createRepository(entityName));
-            javaFiles.add(createDto("Get", entityName));
-            javaFiles.add(createDto("Create", entityName));
-            javaFiles.add(createDto("Update", entityName));
+            javaFiles.add(createDto("Get", entityName, true));
+            javaFiles.add(createDto("Create", entityName, false));
+            javaFiles.add(createDto("Update", entityName, true));
             javaFiles.add(createMapper(entityName));
             if (supportsElasticSearch) {
                 javaFiles.add(createSearchRespository(entityName));
@@ -111,19 +113,36 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
-    private JavaFile createDto(String dtoPrefix, String entityName) {
+    private JavaFile createDto(String dtoPrefix, String entityName, boolean hasId) {
 
         String dtoPackage = packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase();
         String entityDto = dtoPrefix + entityName + "DTO";
 
-        TypeSpec dtoTypeSpec = TypeSpec.classBuilder(entityDto)
+        TypeSpec.Builder dtoTypeSpecBuilder = TypeSpec.classBuilder(entityDto)
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"unused\"").
-                        build())
-                .build();
+                        build());
 
-        return buildJavaFile(dtoPackage, dtoTypeSpec);
+        if (hasId) {
+            FieldSpec idFieldSpec = FieldSpec.builder(Long.class, "id", Modifier.PRIVATE).
+                    addAnnotation(AnnotationSpec.builder(Min.class).
+                            addMember("value", "1L").build()).
+                    addAnnotation(NotNull.class).
+                    build();
+            dtoTypeSpecBuilder.
+                    addField(idFieldSpec).
+                    addMethod(MethodSpec.methodBuilder("getId").
+                            addModifiers(Modifier.PUBLIC).
+                            returns(Long.class).
+                            addStatement("return id").build()).
+                    addMethod(MethodSpec.methodBuilder("setId").
+                            addModifiers(Modifier.PUBLIC).
+                            addParameter(Long.class, "id").
+                            addStatement("this.id = id").build());
+        }
+
+        return buildJavaFile(dtoPackage, dtoTypeSpecBuilder.build());
     }
 
     private JavaFile createMapper(String entityName) {
@@ -140,18 +159,28 @@ public class SpringClassGenerator {
         MethodSpec createToEntityMethod = MethodSpec.methodBuilder("createDtoToEntity").
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 returns(entityClassName).
-                addParameter(createDtoClassName, "create" + entityName.toLowerCase() + "Dto").
+                addParameter(createDtoClassName, "create" + entityName + "Dto").
                 build();
 
         ClassName getDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Get" + entityName + "DTO");
 
+        ClassName updateDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Update" + entityName + "DTO");
+
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         MethodSpec getToEntityMethod = MethodSpec.methodBuilder("entityToGetDto").
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 returns(getDtoClassName).
                 addParameter(entityClassName, entityVarName).
+                build();
+
+        MethodSpec updateEntityMethod = MethodSpec.methodBuilder("entityToEntityUpdate").
+                addModifiers(Modifier.PUBLIC, Modifier.DEFAULT).
+                addParameter(entityClassName, entityName).
+                addParameter(updateDtoClassName, "update" + entityName + "Dto").
                 build();
 
         TypeSpec mapperTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
@@ -165,6 +194,7 @@ public class SpringClassGenerator {
                         build())
                 .addMethod(createToEntityMethod)
                 .addMethod(getToEntityMethod)
+                .addMethod(updateEntityMethod)
                 .build();
 
         return buildJavaFile(mapperPackage, mapperTypeSpec);
@@ -278,6 +308,9 @@ public class SpringClassGenerator {
         final ClassName entityClassName =
                 ClassName.get(packageName + ".domain", entityName);
 
+        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
+        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
+
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
                 addModifiers(Modifier.PUBLIC).
@@ -290,14 +323,23 @@ public class SpringClassGenerator {
                         build()).
                 build();
 
+        ClassName entityException = ClassName.get(packageName + ".web.rest.errors." + extensionPrefix.toLowerCase(), entityName + "NotFoundException");
+
         MethodSpec updateMethodSpec = MethodSpec.methodBuilder("update").
                 addModifiers(Modifier.PUBLIC).
                 returns(getDtoClassName).
                 addParameter(updateDtoClassName, updateDtoVarName).
-                addCode(CodeBlock.builder().build()).build();
+                addCode(CodeBlock.builder()
+                        .addStatement("$T result = findOne($N.getId())", optionalEntityTypeName, updateDtoVarName)
+                        .add(CodeBlock.builder().beginControlFlow("if (result.isPresent())").
+                                addStatement("$T $N = result.get()", entityClassName, entityVarName).
+                                addStatement("$N.entityToEntityUpdate($N, $N)", mapperVarName, entityVarName, updateDtoVarName).
+                                addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
+                                endControlFlow().
+                                addStatement("throw new $T()", entityException).
+                                build())
+                        .build()).build();
 
-        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
-        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
         MethodSpec findDtoMethodSpec = MethodSpec.methodBuilder("getById").
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(Transactional.class).
@@ -404,7 +446,7 @@ public class SpringClassGenerator {
                         addAnnotation(Valid.class).
                         addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
-                addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, result.getId().toString()))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -415,7 +457,7 @@ public class SpringClassGenerator {
                         addAnnotation(Valid.class).
                         addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.update($N)", getDtoClassName, serviceVarName, updateDtoVarName).
-                addStatement("return $T.status($T.OK)\n.headers($T.createEntityUpdateAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("return $T.status($T.OK)\n.headers($T.createEntityUpdateAlert(ENTITY_NAME, result.getId().toString()))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
