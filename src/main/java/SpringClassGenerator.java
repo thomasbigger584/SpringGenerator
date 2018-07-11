@@ -36,7 +36,7 @@ public class SpringClassGenerator {
     private String packageName = "com.pa.twb";
 
     @Parameter(names = "--es", description = "Supports elastic search")
-    private boolean supportsElasticSearch = true;
+    private boolean supportsElasticSearch = false;
 
     @Parameter(names = "-d", description = "Turn on debugging")
     private boolean isDebug = false;
@@ -70,6 +70,7 @@ public class SpringClassGenerator {
             javaFiles.add(createRepository(entityName));
             javaFiles.add(createDto("Get", entityName));
             javaFiles.add(createDto("Create", entityName));
+            javaFiles.add(createDto("Update", entityName));
             javaFiles.add(createMapper(entityName));
             if (supportsElasticSearch) {
                 javaFiles.add(createSearchRespository(entityName));
@@ -81,10 +82,8 @@ public class SpringClassGenerator {
                 for (JavaFile javaFile : javaFiles) {
                     javaFile.writeTo(javaSrcPath);
                 }
-
 //                TODO: look at formatting these files
-//                https://www.jetbrains.com/help/idea/command-line-formatter.html
-
+//                TODO: https://www.jetbrains.com/help/idea/command-line-formatter.html
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -218,6 +217,8 @@ public class SpringClassGenerator {
 
         MethodSpec.Builder constructorBuilder = MethodSpec.constructorBuilder().
                 addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                addMember("value", "\"SpringJavaInjectionPointsAutowiringInspection\"").build()).
                 addParameter(repositoryClassName, repositoryVarName);
 
         String superStatement = "super(%s)";
@@ -236,13 +237,15 @@ public class SpringClassGenerator {
 
         MethodSpec constructor = constructorBuilder.build();
 
-
         ClassName getDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Get" + entityName + "DTO");
         ClassName createDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
+        ClassName updateDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Update" + entityName + "DTO");
         String createDtoVarName = "create" + entityName.toLowerCase() + "Dto";
 
         final ClassName entityClassName =
@@ -260,17 +263,6 @@ public class SpringClassGenerator {
                         build()).
                 build();
 
-        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
-        MethodSpec findMethodSpec = MethodSpec.methodBuilder("getById").
-                addModifiers(Modifier.PUBLIC).
-                addAnnotation(AnnotationSpec.builder(Transactional.class).
-                        addMember("readOnly", "true").
-                        build()).
-                returns(optionalEntityTypeName).
-                addParameter(Long.class, "id").
-                addStatement("return $T.ofNullable(findOne(id))", Optional.class).
-                build();
-
         ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
         MethodSpec findDtoMethodSpec = MethodSpec.methodBuilder("getDtoById").
                 addModifiers(Modifier.PUBLIC).
@@ -279,7 +271,7 @@ public class SpringClassGenerator {
                         build()).
                 returns(optionalDtoTypeName).
                 addParameter(Long.class, "id").
-                addStatement("return getById(id).map($N::entityToGetDto)", mapperVarName).
+                addStatement("return findOne(id).map($N::entityToGetDto)", mapperVarName).
                 build();
 
         ParameterizedTypeName pagedDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
@@ -307,7 +299,6 @@ public class SpringClassGenerator {
                 addField(mapperField).
                 addMethod(constructor).
                 addMethod(createMethodSpec).
-                addMethod(findMethodSpec).
                 addMethod(findDtoMethodSpec).
                 addMethod(pagedDtoMethodSpec);
 
@@ -356,6 +347,12 @@ public class SpringClassGenerator {
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
         String createDtoVarName = "create" + entityName + "Dto";
+
+        ClassName updateDtoClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
+                        "Update" + entityName + "DTO");
+        String updateDtoVarName = "update" + entityName + "Dto";
+
         ClassName getDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Get" + entityName + "DTO");
@@ -364,16 +361,26 @@ public class SpringClassGenerator {
         ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.util", "HeaderUtil");
 
         MethodSpec createMethodSpec = MethodSpec.methodBuilder("create" + entityName).
-                addAnnotation(AnnotationSpec.builder(PostMapping.class).
-                        addMember("value", "\"/create\"").
-                        build()).
-                addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).addAnnotation(Valid.class).addAnnotation(RequestBody.class).build()).
+                addAnnotation(PostMapping.class).
+                addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).
+                        addAnnotation(Valid.class).
+                        addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
                 addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
 
+        MethodSpec updateMethodSpec = MethodSpec.methodBuilder("update" + entityName).
+                addAnnotation(PutMapping.class).
+                addParameter(ParameterSpec.builder(updateDtoClassName, updateDtoVarName).
+                        addAnnotation(Valid.class).
+                        addAnnotation(RequestBody.class).build()).
+                addStatement("$T result = $N.update($N)", getDtoClassName, serviceVarName, updateDtoVarName).
+                addStatement("return $T.status($T.OK)\n.headers($T.createEntityUpdateAlert(ENTITY_NAME, \"1\"))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                returns(getResponseEntityTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
 
         ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
         ClassName responseUtilClassName = ClassName.get("io.github.jhipster.web.util", "ResponseUtil");
@@ -390,7 +397,6 @@ public class SpringClassGenerator {
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
-
 
         ParameterizedTypeName listDtoTypeName = ParameterizedTypeName.get(ClassName.get(List.class), getDtoClassName);
         ParameterizedTypeName responseDtoTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), listDtoTypeName);
@@ -421,6 +427,7 @@ public class SpringClassGenerator {
                 addField(entityNameFieldSpec).
                 addMethod(constructor).
                 addMethod(createMethodSpec).
+                addMethod(updateMethodSpec).
                 addMethod(getByIdMethodSpec).
                 addMethod(getAllDtoMethodSpec).
                 build();
