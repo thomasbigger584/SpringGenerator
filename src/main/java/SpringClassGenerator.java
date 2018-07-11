@@ -75,6 +75,7 @@ public class SpringClassGenerator {
             if (supportsElasticSearch) {
                 javaFiles.add(createSearchRespository(entityName));
             }
+            javaFiles.add(createException(entityName));
             javaFiles.add(createService(entityName));
             javaFiles.add(createResource(entityName));
 
@@ -189,6 +190,31 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
+    private JavaFile createException(String entityName) {
+        final String errorPackage = packageName + ".web.rest.errors." + extensionPrefix.toLowerCase();
+        String exceptionName = entityName + "NotFoundException";
+
+        final ClassName superExceptionClassName =
+                ClassName.get("org.zalando.problem", "AbstractThrowableProblem");
+        final ClassName statusClassName = ClassName.get("org.zalando.problem", "Status");
+        final ClassName constantsClassName = ClassName.get(packageName + ".web.rest.errors", "ErrorConstants");
+
+        MethodSpec constructorBuilder = MethodSpec.constructorBuilder().
+                addModifiers(Modifier.PUBLIC).
+                addStatement("super($T.ENTITY_NOT_FOUND_TYPE, \"" + entityName + " not found\", $T.NOT_FOUND)", constantsClassName, statusClassName).build();
+
+        TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(exceptionName)
+                .addModifiers(Modifier.PUBLIC)
+                .superclass(superExceptionClassName)
+                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build())
+                .addMethod(constructorBuilder)
+                .build();
+
+        return buildJavaFile(errorPackage, jpaEntityTypeSpec);
+    }
+
     private JavaFile createService(String entityName) {
 
         String servicePackage = packageName + ".service." + extensionPrefix.toLowerCase();
@@ -218,7 +244,7 @@ public class SpringClassGenerator {
         MethodSpec.Builder constructorBuilder = MethodSpec.constructorBuilder().
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                addMember("value", "\"SpringJavaInjectionPointsAutowiringInspection\"").build()).
+                        addMember("value", "\"SpringJavaInjectionPointsAutowiringInspection\"").build()).
                 addParameter(repositoryClassName, repositoryVarName);
 
         String superStatement = "super(%s)";
@@ -263,7 +289,6 @@ public class SpringClassGenerator {
                         addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
                         build()).
                 build();
-
 
         MethodSpec updateMethodSpec = MethodSpec.methodBuilder("update").
                 addModifiers(Modifier.PUBLIC).
