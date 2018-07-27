@@ -29,7 +29,7 @@ public class SpringClassGenerator {
     private List<String> entities = new ArrayList<>();
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Java Src package")
-    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/skylark-backend/src/main/java/");
+    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/rims/src/main/java/");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -85,8 +85,8 @@ public class SpringClassGenerator {
                 for (JavaFile javaFile : javaFiles) {
                     javaFile.writeTo(javaSrcPath);
                 }
-//                TODO: look at formatting these files
-//                TODO: https://www.jetbrains.com/help/idea/command-line-formatter.html
+//              TODO: look at formatting these files
+//              TODO: https://www.jetbrains.com/help/idea/command-line-formatter.html
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -462,6 +462,21 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 build();
 
+        ParameterizedTypeName responseVoidTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), ClassName.get(Void.class));
+        MethodSpec deleteMethodSpec = MethodSpec.methodBuilder("delete" + entityName).
+                addAnnotation(AnnotationSpec.builder(DeleteMapping.class).
+                        addMember("value", "\"/{id}\"").
+                        build()).
+                addParameter(ParameterSpec.builder(Long.class, "id").
+                        addAnnotation(AnnotationSpec.builder(PathVariable.class).
+                                addMember("value", "\"id\"").
+                                build()).build()).
+                addStatement("$N.delete(id)", serviceVarName).
+                addStatement("return $T.status($T.OK)\n.headers($T.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build()", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                returns(responseVoidTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
+
         ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
         ClassName responseUtilClassName = ClassName.get("io.github.jhipster.web.util", "ResponseUtil");
         MethodSpec getByIdMethodSpec = MethodSpec.methodBuilder("get" + entityName + "ById").
@@ -493,7 +508,6 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 build();
 
-
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(RestController.class).
@@ -508,6 +522,7 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(updateMethodSpec).
+                addMethod(deleteMethodSpec).
                 addMethod(getByIdMethodSpec).
                 addMethod(getAllDtoMethodSpec).
                 build();
