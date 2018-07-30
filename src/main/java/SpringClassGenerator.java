@@ -29,7 +29,7 @@ public class SpringClassGenerator {
     private List<String> entities = new ArrayList<>();
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Java Src package")
-    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/rims/src/main/java/");
+    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leepcore/src/main/java/");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
