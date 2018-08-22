@@ -1,14 +1,20 @@
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
+import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
+import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,11 +31,14 @@ import java.util.Optional;
 
 public class SpringClassGenerator {
 
-    @Parameter(names = "-e", description = "Entity to parse")
+    @Parameter(names = "-e", description = "Entity to parse", required = true)
     private List<String> entities = new ArrayList<>();
 
-    @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Java Src package")
-    private Path javaSrcPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leepcore/src/main/java/");
+    @Parameter(names = "--mc", description = "App Main class", required = true)
+    private String appMainClass = null;
+
+    @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leepcore");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -45,6 +54,9 @@ public class SpringClassGenerator {
 
     @Parameter(names = "--help", help = true)
     private boolean help = false;
+
+    @Parameter(names = "--st", description = "Skip Resource Test")
+    private boolean skipTest = false;
 
     public static void main(String... args) {
         SpringClassGenerator scg = new SpringClassGenerator();
@@ -67,26 +79,32 @@ public class SpringClassGenerator {
 
             entityName = entityName.substring(0, 1).toUpperCase() + entityName.substring(1);
 
-            List<JavaFile> javaFiles = new ArrayList<>();
+            List<JavaFile> mainJavaFiles = new ArrayList<>();
 
-            javaFiles.add(createRepository(entityName));
-            javaFiles.add(createDto("Get", entityName, true));
-            javaFiles.add(createDto("Create", entityName, false));
-            javaFiles.add(createDto("Update", entityName, true));
-            javaFiles.add(createMapper(entityName));
+            mainJavaFiles.add(createRepository(entityName));
+            mainJavaFiles.add(createDto("Get", entityName, true));
+            mainJavaFiles.add(createDto("Create", entityName, false));
+            mainJavaFiles.add(createDto("Update", entityName, true));
+            mainJavaFiles.add(createMapper(entityName));
             if (supportsElasticSearch) {
-                javaFiles.add(createSearchRespository(entityName));
+                mainJavaFiles.add(createSearchRespository(entityName));
             }
-            javaFiles.add(createException(entityName));
-            javaFiles.add(createService(entityName));
-            javaFiles.add(createResource(entityName));
+            mainJavaFiles.add(createException(entityName));
+            mainJavaFiles.add(createService(entityName));
+            mainJavaFiles.add(createResource(entityName));
+
+            List<JavaFile> testJavaFiles = new ArrayList<>();
+            if (!skipTest) {
+                testJavaFiles.add(createTest(entityName));
+            }
 
             try {
-                for (JavaFile javaFile : javaFiles) {
-                    javaFile.writeTo(javaSrcPath);
+                for (JavaFile mainJavaFile : mainJavaFiles) {
+                    mainJavaFile.writeTo(Paths.get(projectPath.toString() + "/src/main/java/"));
                 }
-//              TODO: look at formatting these files
-//              TODO: https://www.jetbrains.com/help/idea/command-line-formatter.html
+                for (JavaFile testJavaFile : testJavaFiles) {
+                    testJavaFile.writeTo(Paths.get(projectPath.toString() + "/src/test/java/"));
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -528,6 +546,68 @@ public class SpringClassGenerator {
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
+    }
+
+    private JavaFile createTest(String entityName) {
+
+        final String resourceTestPackage = packageName + ".web.rest." + extensionPrefix.toLowerCase();
+        final String entityTestResource = extensionPrefix + entityName + "ResourceIntTest";
+
+        final ClassName repoClassName =
+                ClassName.get(packageName + ".repository." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Repository");
+        final String repoVarName = extensionPrefix.toLowerCase() + entityName + "Repository";
+        FieldSpec repoFieldSpec = FieldSpec.builder(repoClassName, repoVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        final ClassName serviceClassName =
+                ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Service");
+        final String serviceVarName = extensionPrefix.toLowerCase() + entityName + "Service";
+        FieldSpec serviceFieldSpec = FieldSpec.builder(serviceClassName, serviceVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        final ClassName jacksonClassName = ClassName.get(MappingJackson2HttpMessageConverter.class);
+        final String jacksonVarName = "jacksonMessageConverter";
+        FieldSpec jacksonFieldSpec = FieldSpec.builder(jacksonClassName, jacksonVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        final ClassName pageableClassName = ClassName.get(PageableHandlerMethodArgumentResolver.class);
+        final String pageableVarName = "pageableArgumentResolver";
+        FieldSpec pageableFieldSpec = FieldSpec.builder(pageableClassName, pageableVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        ClassName exceptionClassName = ClassName.get(packageName + ".web.rest.errors", "ExceptionTranslator");
+        final String exceptionVarName = "exceptionTranslator";
+        FieldSpec exceptionFieldSpec = FieldSpec.builder(exceptionClassName, exceptionVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        final ClassName restMvcClassName = ClassName.get(MockMvc.class);
+        final String restMvcVarName = "rest" + entityName + "MockMvc";
+        FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
+        final ClassName entityClassName =
+                ClassName.get(packageName + ".domain", entityName);
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
+
+        TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(RunWith.class).
+                        addMember("value", "$T.class", ClassName.get(SpringRunner.class)).
+                        build()).
+                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
+                        addMember("value", "\"unused\"").
+                        build()).
+                addField(repoFieldSpec).
+                addField(serviceFieldSpec).
+                addField(jacksonFieldSpec).
+                addField(pageableFieldSpec).
+                addField(exceptionFieldSpec).
+                addField(restMvcFieldSpec).
+                addField(entityFieldSpec).
+                build();
+
+        return buildJavaFile(resourceTestPackage, testResourceTypeSpec);
     }
 
     private JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
