@@ -1,8 +1,10 @@
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
+import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
+import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -590,6 +592,17 @@ public class SpringClassGenerator {
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
 
+
+        final ClassName resourceClassName =
+                ClassName.get(packageName + ".resource." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
+        final String resourceVarName = extensionPrefix.toLowerCase() + entityName + "Resource";
+
+        MethodSpec setupMethodSpec = MethodSpec.methodBuilder("setup").
+                addAnnotation(Before.class).
+                addStatement("$T.initMocks(this)", MockitoAnnotations.class).
+                addStatement("final $T $S = new $T($S)", resourceClassName, resourceVarName, resourceClassName, serviceVarName).
+        build();
+
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(RunWith.class).
@@ -605,6 +618,7 @@ public class SpringClassGenerator {
                 addField(exceptionFieldSpec).
                 addField(restMvcFieldSpec).
                 addField(entityFieldSpec).
+                addMethod(setupMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec);
