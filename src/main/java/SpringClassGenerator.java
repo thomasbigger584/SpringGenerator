@@ -696,6 +696,20 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
+        MethodSpec testGetAllEntityMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addStatement(repoVarName + ".saveAndFlush(this." + entityVarName + ")").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "?sort=id,desc\"))\n").
+                        indent().add(".andExpect(status().isOk())\n").
+                        add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
+                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(this." + entityVarName + ".getId().intValue())));\n").
+                        unindent().build()).
+                build();
+
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
@@ -725,6 +739,7 @@ public class SpringClassGenerator {
                 addMethod(testEntityCreateMethodSpec).
                 addMethod(testGetEntityMethodSpec).
                 addMethod(testGetNonExistingEntityMethodSpec).
+                addMethod(testGetAllEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
