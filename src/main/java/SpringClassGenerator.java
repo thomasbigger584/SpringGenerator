@@ -714,7 +714,10 @@ public class SpringClassGenerator {
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
                 addModifiers(Modifier.PUBLIC).
-                addJavadoc("./mvnw clean test -Dtest=" + entityTestResource + "\n").
+                addJavadoc("Run Integration Test with:\n" +
+                        "./mvnw clean test -Dtest=" + entityTestResource + "\n" +
+                        "./mvnw clean test -Dtest=" + entityTestResource + "#getAll" + entityName + "\n" +
+                        "./mvnw clean test -Dtest=" + entityTestResource + "#get*\n").
                 addAnnotation(AnnotationSpec.builder(RunWith.class).
                         addMember("value", "$T.class", ClassName.get(SpringRunner.class)).
                         build()).
