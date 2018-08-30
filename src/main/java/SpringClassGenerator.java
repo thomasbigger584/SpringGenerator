@@ -1,6 +1,8 @@
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
+import org.assertj.core.api.Assertions;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,6 +21,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -433,14 +437,7 @@ public class SpringClassGenerator {
                 addStatement("this." + serviceVarName + " = " + serviceVarName).
                 build();
 
-        String resourceUriName = "";
-        String[] words = entityName.split("(?<!(^|[A-Z]))(?=[A-Z])|(?<!^)(?=[A-Z][a-z])");
-        for (int index = 0; index < words.length; index++) {
-            resourceUriName = resourceUriName.concat(words[index]);
-            if (index < words.length - 1) {
-                resourceUriName = resourceUriName.concat("-");
-            }
-        }
+        String resourceUriName = getUrlPath(entityName);
 
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         FieldSpec entityNameFieldSpec =
@@ -526,7 +523,7 @@ public class SpringClassGenerator {
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 addStatement("$T page = $N.getAll(pageable)", pageDtoTypeName, serviceVarName).
                 addStatement("$T headers = $T.generatePaginationHttpHeaders(page, \"/api/ext-$L\")",
-                        HttpHeaders.class, paginationUtilClassName, resourceUriName.toLowerCase()).
+                        HttpHeaders.class, paginationUtilClassName, resourceUriName).
                 addStatement("return new $T<>(page.getContent(), headers, $T.OK)", ResponseEntity.class, HttpStatus.class).
                 returns(responseDtoTypeName).
                 addModifiers(Modifier.PUBLIC).
@@ -595,10 +592,11 @@ public class SpringClassGenerator {
         final String restMvcVarName = "rest" + entityName + "MockMvc";
         FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).build();
 
-        final ClassName entityClassName =
-                ClassName.get(packageName + ".domain", entityName);
-        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-        FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
+        String dtoPackage = packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase();
+        String createEntitySimpleName = "Create" + entityName + "DTO";
+        final ClassName createEntityClassName = ClassName.get(dtoPackage, createEntitySimpleName);
+        String createEntityVarName = createEntitySimpleName.substring(0, 1).toLowerCase() + createEntitySimpleName.substring(1);
+        FieldSpec entityFieldSpec = FieldSpec.builder(createEntityClassName, createEntityVarName, Modifier.PRIVATE).build();
 
         final ClassName resourceClassName =
                 ClassName.get(packageName + ".web.rest." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
@@ -613,7 +611,7 @@ public class SpringClassGenerator {
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + " = $T.standaloneSetup(" + resourceVarName + ")\n", MockMvcBuilders.class).
                         indent().add(".setCustomArgumentResolvers(pageableArgumentResolver)\n").
-                        add(".setConversionService($T.createFormattingConversionService())\n", testUtilClassName).
+                        add(".setConversionService(createFormattingConversionService())\n").
                         add(".setMessageConverters(jacksonMessageConverter).build();\n").
                         unindent().build()).
                 build();
@@ -621,15 +619,15 @@ public class SpringClassGenerator {
         MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("createEntity").
                 addModifiers(Modifier.PUBLIC, Modifier.STATIC).
                 addParameter(EntityManager.class, "em").
-                returns(entityClassName).
-                addStatement("$T " + entityVarName + " = new $T()", entityClassName, entityClassName).
-                addStatement("return " + entityVarName).
+                returns(createEntityClassName).
+                addStatement("$T " + createEntityVarName + " = new $T()", createEntityClassName, createEntityClassName).
+                addStatement("return " + createEntityVarName).
                 build();
 
         MethodSpec initTestMethodSpec = MethodSpec.methodBuilder("initTest").
                 addAnnotation(Before.class).
                 addModifiers(Modifier.PUBLIC).
-                addStatement("this." + entityVarName + " = createEntity(em)").
+                addStatement("this." + createEntityVarName + " = createEntity(em)").
                 build();
 
         /*
@@ -637,14 +635,26 @@ public class SpringClassGenerator {
          * ******************************************************************
          */
 
+        String baseApiUrl = "/api/" + extensionPrefix.toLowerCase() + "-" + getUrlPath(entityName);
+
+        final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
+        ParameterizedTypeName listEntityTypeName = ParameterizedTypeName.get(ClassName.get(List.class), entityClassName);
+
         MethodSpec testEntityCreateMethodSpec = MethodSpec.methodBuilder("create" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
                 addException(Exception.class).
                 addStatement("int databaseSizeBeforeCreate = " + repoVarName + ".findAll().size()").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "\")\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(this." + createEntityVarName +")))\n", testUtilClassName).
+                        add(".andExpect(status().isCreated());\n\n").
+                        unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeCreate + 1)").
                 build();
-
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
@@ -673,7 +683,29 @@ public class SpringClassGenerator {
                 addMethod(testEntityCreateMethodSpec).
                 build();
 
-        return buildJavaFile(resourceTestPackage, testResourceTypeSpec);
+
+
+        return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
+                toBuilder().
+                addStaticImport(testUtilClassName, "createFormattingConversionService").
+                addStaticImport(ClassName.get(Assertions.class), "assertThat").
+                addStaticImport(ClassName.get(Matchers.class), "hasItem").
+                addStaticImport(ClassName.get(MockMvcRequestBuilders.class), "*").
+                addStaticImport(ClassName.get(MockMvcResultMatchers.class), "*").
+
+                build();
+    }
+
+    private String getUrlPath(String entityName) {
+        String resourceUriName = "";
+        String[] words = entityName.split("(?<!(^|[A-Z]))(?=[A-Z])|(?<!^)(?=[A-Z][a-z])");
+        for (int index = 0; index < words.length; index++) {
+            resourceUriName = resourceUriName.concat(words[index]);
+            if (index < words.length - 1) {
+                resourceUriName = resourceUriName.concat("-");
+            }
+        }
+        return resourceUriName.toLowerCase();
     }
 
     private JavaFile buildJavaFile(String domainPackage, TypeSpec jpaEntityTypeSpec) {
