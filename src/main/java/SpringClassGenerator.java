@@ -2,10 +2,12 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.squareup.javapoet.*;
 import org.junit.Before;
+import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
@@ -17,10 +19,12 @@ import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import javax.lang.model.element.Modifier;
+import javax.persistence.EntityManager;
 import javax.validation.Valid;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
@@ -40,7 +44,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leepcore");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leeptickets");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -582,6 +586,11 @@ public class SpringClassGenerator {
         FieldSpec exceptionFieldSpec = FieldSpec.builder(exceptionClassName, exceptionVarName, Modifier.PRIVATE).
                 addAnnotation(Autowired.class).build();
 
+        final ClassName entityManagerClassName = ClassName.get(EntityManager.class);
+        final String entityManagerVarName = "em";
+        FieldSpec entityManagerFieldSpec = FieldSpec.builder(entityManagerClassName, entityManagerVarName, Modifier.PRIVATE).
+                addAnnotation(Autowired.class).build();
+
         final ClassName restMvcClassName = ClassName.get(MockMvc.class);
         final String restMvcVarName = "rest" + entityName + "MockMvc";
         FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).
@@ -592,22 +601,61 @@ public class SpringClassGenerator {
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
 
-
         final ClassName resourceClassName =
-                ClassName.get(packageName + ".resource." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
+                ClassName.get(packageName + ".web.rest." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
         final String resourceVarName = extensionPrefix.toLowerCase() + entityName + "Resource";
 
+        ClassName testUtilClassName = ClassName.get(packageName + ".web.rest", "TestUtil");
         MethodSpec setupMethodSpec = MethodSpec.methodBuilder("setup").
                 addAnnotation(Before.class).
+                addModifiers(Modifier.PUBLIC).
                 addStatement("$T.initMocks(this)", MockitoAnnotations.class).
-                addStatement("final $T $S = new $T($S)", resourceClassName, resourceVarName, resourceClassName, serviceVarName).
-        build();
+                addStatement("final $T " + resourceVarName + " = new $T(" + serviceVarName + ")", resourceClassName, resourceClassName).
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + " = $T.standaloneSetup(" + resourceVarName + ")\n", MockMvcBuilders.class).
+                        indent().add(".setCustomArgumentResolvers(pageableArgumentResolver)\n").
+                        add(".setConversionService($T.createFormattingConversionService())\n", testUtilClassName).
+                        add(".setMessageConverters(jacksonMessageConverter).build();\n").
+                        unindent().build()).
+                build();
 
+        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("createEntity").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                addParameter(EntityManager.class, "em").
+                returns(entityClassName).
+                addStatement("$T " + entityVarName + " = new $T()", entityClassName, entityClassName).
+                addStatement("return " + entityVarName).
+                build();
+
+        MethodSpec initTestMethodSpec = MethodSpec.methodBuilder("initTest").
+                addAnnotation(Before.class).
+                addModifiers(Modifier.PUBLIC).
+                addStatement("this." + entityVarName + " = createEntity(em)").
+                build();
+
+        /*
+         * Tests
+         * ******************************************************************
+         */
+
+        MethodSpec testEntityCreateMethodSpec = MethodSpec.methodBuilder("create" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addStatement("int databaseSizeBeforeCreate = " + repoVarName + ".findAll().size()").
+                build();
+
+
+        ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
+        ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(RunWith.class).
                         addMember("value", "$T.class", ClassName.get(SpringRunner.class)).
                         build()).
+                addAnnotation(AnnotationSpec.builder(SpringBootTest.class)
+                        .addMember("classes", "{$T.class, $T.class}", securityBeanConfigClassName, appClassName).build()).
                 addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"unused\"").
                         build()).
@@ -616,9 +664,13 @@ public class SpringClassGenerator {
                 addField(jacksonFieldSpec).
                 addField(pageableFieldSpec).
                 addField(exceptionFieldSpec).
+                addField(entityManagerFieldSpec).
                 addField(restMvcFieldSpec).
                 addField(entityFieldSpec).
                 addMethod(setupMethodSpec).
+                addMethod(createEntityMethodSpec).
+                addMethod(initTestMethodSpec).
+                addMethod(testEntityCreateMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec);
