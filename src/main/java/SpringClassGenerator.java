@@ -15,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Repository;
@@ -596,7 +597,13 @@ public class SpringClassGenerator {
         String createEntitySimpleName = "Create" + entityName + "DTO";
         final ClassName createEntityClassName = ClassName.get(dtoPackage, createEntitySimpleName);
         String createEntityVarName = createEntitySimpleName.substring(0, 1).toLowerCase() + createEntitySimpleName.substring(1);
-        FieldSpec entityFieldSpec = FieldSpec.builder(createEntityClassName, createEntityVarName, Modifier.PRIVATE).build();
+        FieldSpec createEntityFieldSpec = FieldSpec.builder(createEntityClassName, createEntityVarName, Modifier.PRIVATE).build();
+
+
+        final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
+        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
+        FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
+
 
         final ClassName resourceClassName =
                 ClassName.get(packageName + ".web.rest." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
@@ -616,7 +623,7 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
-        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("createEntity").
+        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("createCreateEntityDto").
                 addModifiers(Modifier.PUBLIC, Modifier.STATIC).
                 addParameter(EntityManager.class, "em").
                 returns(createEntityClassName).
@@ -624,10 +631,19 @@ public class SpringClassGenerator {
                 addStatement("return " + createEntityVarName).
                 build();
 
+        MethodSpec entityMethodSpec = MethodSpec.methodBuilder("createEntity").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                addParameter(EntityManager.class, "em").
+                returns(entityClassName).
+                addStatement("$T " + entityVarName + " = new $T()", entityClassName, entityClassName).
+                addStatement("return " + entityVarName).
+                build();
+
         MethodSpec initTestMethodSpec = MethodSpec.methodBuilder("initTest").
                 addAnnotation(Before.class).
                 addModifiers(Modifier.PUBLIC).
-                addStatement("this." + createEntityVarName + " = createEntity(em)").
+                addStatement("this." + entityVarName + " = createEntity(em)").
+                addStatement("this." + createEntityVarName + " = createCreateEntityDto(em)").
                 build();
 
         /*
@@ -637,7 +653,6 @@ public class SpringClassGenerator {
 
         String baseApiUrl = "/api/" + extensionPrefix.toLowerCase() + "-" + getUrlPath(entityName);
 
-        final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
         ParameterizedTypeName listEntityTypeName = ParameterizedTypeName.get(ClassName.get(List.class), entityClassName);
 
         MethodSpec testEntityCreateMethodSpec = MethodSpec.methodBuilder("create" + entityName).
@@ -654,6 +669,31 @@ public class SpringClassGenerator {
                         unindent().build()).
                 addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
                 addStatement("assertThat(list).hasSize(databaseSizeBeforeCreate + 1)").
+                build();
+
+        MethodSpec testGetEntityMethodSpec = MethodSpec.methodBuilder("get" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addStatement(repoVarName + ".saveAndFlush(this." + entityVarName + ")").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", this." + entityVarName + ".getId()))\n").
+                        indent().add(".andExpect(status().isOk())\n").
+                        add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
+                        add(".andExpect(jsonPath(\"$$.id\").value(this." + entityVarName + ".getId().intValue()));\n").
+                        unindent().build()).
+                build();
+
+        MethodSpec testGetNonExistingEntityMethodSpec = MethodSpec.methodBuilder("getNonExisting" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
+                        indent().add(".andExpect(status().isNotFound());\n").
+                        unindent().build()).
                 build();
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
@@ -677,13 +717,15 @@ public class SpringClassGenerator {
                 addField(entityManagerFieldSpec).
                 addField(restMvcFieldSpec).
                 addField(entityFieldSpec).
+                addField(createEntityFieldSpec).
                 addMethod(setupMethodSpec).
+                addMethod(entityMethodSpec).
                 addMethod(createEntityMethodSpec).
                 addMethod(initTestMethodSpec).
                 addMethod(testEntityCreateMethodSpec).
+                addMethod(testGetEntityMethodSpec).
+                addMethod(testGetNonExistingEntityMethodSpec).
                 build();
-
-
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
                 toBuilder().
@@ -692,7 +734,6 @@ public class SpringClassGenerator {
                 addStaticImport(ClassName.get(Matchers.class), "hasItem").
                 addStaticImport(ClassName.get(MockMvcRequestBuilders.class), "*").
                 addStaticImport(ClassName.get(MockMvcResultMatchers.class), "*").
-
                 build();
     }
 
