@@ -593,8 +593,7 @@ public class SpringClassGenerator {
 
         final ClassName restMvcClassName = ClassName.get(MockMvc.class);
         final String restMvcVarName = "rest" + entityName + "MockMvc";
-        FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).
-                addAnnotation(Autowired.class).build();
+        FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).build();
 
         final ClassName entityClassName =
                 ClassName.get(packageName + ".domain", entityName);
@@ -651,6 +650,7 @@ public class SpringClassGenerator {
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
                 addModifiers(Modifier.PUBLIC).
+                addJavadoc("./mvnw clean test -Dtest=" + entityTestResource + "\n").
                 addAnnotation(AnnotationSpec.builder(RunWith.class).
                         addMember("value", "$T.class", ClassName.get(SpringRunner.class)).
                         build()).
