@@ -773,6 +773,21 @@ public class SpringClassGenerator {
                 addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
                 build();
 
+        MethodSpec testDeleteEntityMethodSpec = MethodSpec.methodBuilder("delete" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addStatement("this." + repoVarName + ".saveAndFlush(this." + entityVarName + ")").
+                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", this." + entityVarName + ".getId())\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".accept($T.APPLICATION_JSON_UTF8))\n", testUtilClassName).
+                        add(".andExpect(status().isOk());\n\n").
+                        unindent().build()).
+                build();
+
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
@@ -813,6 +828,7 @@ public class SpringClassGenerator {
                 addMethod(testGetAllEntityMethodSpec).
                 addMethod(tesUpdateEntityMethodSpec).
                 addMethod(updateNonExistingEntityMethodSpec).
+                addMethod(testDeleteEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
