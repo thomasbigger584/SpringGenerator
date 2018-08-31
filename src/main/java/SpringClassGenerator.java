@@ -10,6 +10,7 @@ import org.mapstruct.Mapper;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
@@ -393,6 +394,18 @@ public class SpringClassGenerator {
                 addStatement("return page.map($N::entityToGetDto)", mapperVarName).
                 build();
 
+        MethodSpec deleteMethodSpec = MethodSpec.methodBuilder("delete").
+                addModifiers(Modifier.PUBLIC).
+                addParameter(Long.class, "id").
+                addStatement("$T result = findOne(id)", optionalEntityTypeName).
+                addCode(CodeBlock.builder().
+                        beginControlFlow("if (result.isPresent())").
+                        addStatement("super.delete(id)").
+                        addStatement("return").
+                        endControlFlow().build()).
+                addStatement("throw new $T()", entityException).
+                build();
+
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
         TypeSpec.Builder jpaEntityTypeSpecBuilder = TypeSpec.classBuilder(entityService).
@@ -409,7 +422,8 @@ public class SpringClassGenerator {
                 addMethod(createMethodSpec).
                 addMethod(updateMethodSpec).
                 addMethod(findDtoMethodSpec).
-                addMethod(pagedDtoMethodSpec);
+                addMethod(pagedDtoMethodSpec).
+                addMethod(deleteMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
@@ -786,6 +800,22 @@ public class SpringClassGenerator {
                         add(".accept($T.APPLICATION_JSON_UTF8))\n", testUtilClassName).
                         add(".andExpect(status().isOk());\n\n").
                         unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate - 1)").
+                build();
+
+        MethodSpec testDeleteNonExistingEntityMethodSpec = MethodSpec.methodBuilder("deleteNonExisting" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
+                        indent().add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
                 build();
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
@@ -829,6 +859,7 @@ public class SpringClassGenerator {
                 addMethod(tesUpdateEntityMethodSpec).
                 addMethod(updateNonExistingEntityMethodSpec).
                 addMethod(testDeleteEntityMethodSpec).
+                addMethod(testDeleteNonExistingEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
