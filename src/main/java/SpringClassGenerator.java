@@ -5,7 +5,6 @@ import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
 import org.mockito.MockitoAnnotations;
@@ -755,6 +754,25 @@ public class SpringClassGenerator {
                 addComment("TODO assertThat(test.getName()).isEqualTo(UPDATED_NAME)").
                 build();
 
+        ClassName entityException = ClassName.get(packageName + ".web.rest.errors." + extensionPrefix.toLowerCase(), entityName + "NotFoundException");
+
+        MethodSpec updateNonExistingEntityMethodSpec = MethodSpec.methodBuilder("updateNonExisting" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
+                addStatement("this." + updateEntityVarName + ".setId($T.MAX_VALUE)", Long.class).
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(this." + updateEntityVarName + ")))\n", testUtilClassName).
+                        add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
+                build();
+
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
@@ -794,12 +812,13 @@ public class SpringClassGenerator {
                 addMethod(testGetNonExistingEntityMethodSpec).
                 addMethod(testGetAllEntityMethodSpec).
                 addMethod(tesUpdateEntityMethodSpec).
+                addMethod(updateNonExistingEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
                 toBuilder().
                 addStaticImport(testUtilClassName, "createFormattingConversionService").
-                addStaticImport(ClassName.get(Assertions.class), "assertThat").
+                addStaticImport(ClassName.get(Assertions.class), "*").
                 addStaticImport(ClassName.get(Matchers.class), "hasItem").
                 addStaticImport(ClassName.get(MockMvcRequestBuilders.class), "*").
                 addStaticImport(ClassName.get(MockMvcResultMatchers.class), "*").
