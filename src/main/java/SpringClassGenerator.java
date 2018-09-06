@@ -676,18 +676,7 @@ public class SpringClassGenerator {
         final String restMvcVarName = "rest" + entityName + "MockMvc";
         FieldSpec restMvcFieldSpec = FieldSpec.builder(restMvcClassName, restMvcVarName, Modifier.PRIVATE).build();
 
-        String dtoPackage = packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase();
-        String createEntitySimpleName = "Create" + entityName + "DTO";
-        final ClassName createEntityClassName = ClassName.get(dtoPackage, createEntitySimpleName);
-        String createEntityVarName = createEntitySimpleName.substring(0, 1).toLowerCase() + createEntitySimpleName.substring(1);
-
-        String updateEntitySimpleName = "Update" + entityName + "DTO";
-        final ClassName updateEntityClassName = ClassName.get(dtoPackage, updateEntitySimpleName);
-        String updateEntityVarName = updateEntitySimpleName.substring(0, 1).toLowerCase() + updateEntitySimpleName.substring(1);
-
         final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
-        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-
         final ClassName resourceClassName =
                 ClassName.get(packageName + ".web.rest." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
         final String resourceVarName = extensionPrefix.toLowerCase() + entityName + "Resource";
@@ -805,11 +794,11 @@ public class SpringClassGenerator {
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
-                addException(Exception.class).
                 addCode(CodeBlock.builder().
-                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
-                        indent().add(".andExpect(status().isNotFound());\n").
-                        unindent().build()).
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
+                        indent().add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
                 build();
 
         MethodSpec testGetAllEntityMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
@@ -823,8 +812,19 @@ public class SpringClassGenerator {
                         indent().add(".andExpect(status().isOk())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
                         add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
-                        add("// TODO: .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
+                        add("// .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
                         unindent().build()).
+                build();
+
+        MethodSpec testDeleteNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testDeleteNonExistent" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
+                        indent().add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
                 build();
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
@@ -855,6 +855,7 @@ public class SpringClassGenerator {
                 addMethod(testGetEntityMethodSpec).
                 addMethod(testGetNonExistingEntityMethodSpec).
                 addMethod(testGetAllEntityMethodSpec).
+                addMethod(testDeleteNonExistingEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
