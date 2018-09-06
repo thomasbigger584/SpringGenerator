@@ -750,7 +750,7 @@ public class SpringClassGenerator {
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
                         indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
-                        add(".content($T.convertObjectToJsonBytes(createCreate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(createUpdate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
                         add(".andExpect(status().isOk());\n\n").
                         unindent().build()).
                 addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
