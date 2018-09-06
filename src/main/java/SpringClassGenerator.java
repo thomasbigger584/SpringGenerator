@@ -38,7 +38,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public class SpringClassGenerator {
 
@@ -49,7 +48,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leepcore");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leep-core");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -106,6 +105,7 @@ public class SpringClassGenerator {
 
             List<JavaFile> testJavaFiles = new ArrayList<>();
             if (!skipTest) {
+                testJavaFiles.add(createDataUtil(entityName));
                 testJavaFiles.add(createTest(entityName));
             }
 
@@ -208,7 +208,7 @@ public class SpringClassGenerator {
 
         MethodSpec updateEntityMethod = MethodSpec.methodBuilder("entityToEntityUpdate").
                 addModifiers(Modifier.PUBLIC, Modifier.DEFAULT).
-                addParameter(entityClassName, entityName).
+                addParameter(entityClassName, entityVarName).
                 addParameter(updateDtoClassName, "update" + entityName + "Dto").
                 build();
 
@@ -337,9 +337,6 @@ public class SpringClassGenerator {
         final ClassName entityClassName =
                 ClassName.get(packageName + ".domain", entityName);
 
-        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
-        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
-
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
         MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
                 addModifiers(Modifier.PUBLIC).
@@ -359,25 +356,39 @@ public class SpringClassGenerator {
                 returns(getDtoClassName).
                 addParameter(updateDtoClassName, updateDtoVarName).
                 addCode(CodeBlock.builder()
-                        .addStatement("$T result = findOne($N.getId())", optionalEntityTypeName, updateDtoVarName)
-                        .add(CodeBlock.builder().beginControlFlow("if (result.isPresent())").
-                                addStatement("$T $N = result.get()", entityClassName, entityVarName).
-                                addStatement("$N.entityToEntityUpdate($N, $N)", mapperVarName, entityVarName, updateDtoVarName).
-                                addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
-                                endControlFlow().
-                                addStatement("throw new $T()", entityException).
-                                build())
-                        .build()).build();
+                        .addStatement("$T result = findByIdThrowException($N.getId())", entityClassName, updateDtoVarName)
+                        .addStatement("$N.entityToEntityUpdate(result, $N)", mapperVarName, updateDtoVarName)
+                        .addStatement("return $N.entityToGetDto(result)", mapperVarName).build()).build();
 
-        MethodSpec findDtoMethodSpec = MethodSpec.methodBuilder("getById").
+        MethodSpec deleteThrowExceptionMethodSpec = MethodSpec.methodBuilder("delete").
+                addModifiers(Modifier.PUBLIC).
+                addParameter(Long.class, "id").
+                addStatement("$T result = findByIdThrowException(id)", entityClassName).
+                addStatement("super.delete(id)").
+                build();
+
+        MethodSpec findByIdThrowExceptionMethodSpec = MethodSpec.methodBuilder("findByIdThrowException").
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(Transactional.class).
                         addMember("readOnly", "true").
                         build()).
-                returns(optionalDtoTypeName).
+                returns(entityClassName).
                 addParameter(Long.class, "id").
-                addStatement("$T result = findOne(id)", optionalEntityTypeName).
-                addStatement("return result.map($N::entityToGetDto)", mapperVarName).
+                addCode(CodeBlock.builder().
+                        add("return " + repositoryVarName + ".findById(id).orElseGet(() -> {\n").
+                        indent().add("throw new $T();\n", entityException).unindent().
+                        add("});\n").build()).
+                build();
+
+        MethodSpec findDtoThrowExceptionMethodSpec = MethodSpec.methodBuilder("getById").
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(Transactional.class).
+                        addMember("readOnly", "true").
+                        build()).
+                returns(getDtoClassName).
+                addParameter(Long.class, "id").
+                addStatement("$T result = findByIdThrowException(id)", entityClassName).
+                addStatement("return $N.entityToGetDto(result)", mapperVarName).
                 build();
 
         ParameterizedTypeName pagedDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
@@ -391,18 +402,6 @@ public class SpringClassGenerator {
                 addParameter(Pageable.class, "pageable").
                 addStatement("$T page = findAll(pageable)", pagedEntityTypeName).
                 addStatement("return page.map($N::entityToGetDto)", mapperVarName).
-                build();
-
-        MethodSpec deleteMethodSpec = MethodSpec.methodBuilder("delete").
-                addModifiers(Modifier.PUBLIC).
-                addParameter(Long.class, "id").
-                addStatement("$T result = findOne(id)", optionalEntityTypeName).
-                addCode(CodeBlock.builder().
-                        beginControlFlow("if (result.isPresent())").
-                        addStatement("super.delete(id)").
-                        addStatement("return").
-                        endControlFlow().build()).
-                addStatement("throw new $T()", entityException).
                 build();
 
         final ClassName superServiceClassName =
@@ -420,9 +419,10 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(updateMethodSpec).
-                addMethod(findDtoMethodSpec).
-                addMethod(pagedDtoMethodSpec).
-                addMethod(deleteMethodSpec);
+                addMethod(deleteThrowExceptionMethodSpec).
+                addMethod(findByIdThrowExceptionMethodSpec).
+                addMethod(findDtoThrowExceptionMethodSpec).
+                addMethod(pagedDtoMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
@@ -512,8 +512,6 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 build();
 
-        ParameterizedTypeName optionalDtoTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), getDtoClassName);
-        ClassName responseUtilClassName = ClassName.get("io.github.jhipster.web.util", "ResponseUtil");
         MethodSpec getByIdMethodSpec = MethodSpec.methodBuilder("get" + entityName + "ById").
                 addAnnotation(AnnotationSpec.builder(GetMapping.class).
                         addMember("value", "\"/{id}\"").
@@ -522,8 +520,8 @@ public class SpringClassGenerator {
                         addAnnotation(AnnotationSpec.builder(PathVariable.class).
                                 addMember("value", "\"id\"").
                                 build()).build()).
-                addStatement("$T result = $N.getById(id)", optionalDtoTypeName, serviceVarName).
-                addStatement("return $T.wrapOrNotFound(result)", responseUtilClassName).
+                addStatement("$T result = $N.getById(id)", getDtoClassName, serviceVarName).
+                addStatement("return $T.status($T.OK).body(result)", ResponseEntity.class, HttpStatus.class).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -565,15 +563,81 @@ public class SpringClassGenerator {
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
     }
 
-    private JavaFile createTest(String entityName) {
+    private JavaFile createDataUtil(String entityName) {
 
-        FieldSpec defaultValueFieldSpec = FieldSpec.builder(String.class, "DEFAULT_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
+        final String resourceTestPackage = packageName + ".web.rest." + extensionPrefix.toLowerCase() + "." + entityName.toLowerCase();
+        final String entityDataUtilResource = entityName + "DataUtil";
+
+        FieldSpec defaultValueFieldSpec = FieldSpec.builder(String.class, "DEFAULT_NAME", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).
                 initializer("\"CCCCCCCCCC\"").build();
-
-        FieldSpec updatedValueFieldSpec = FieldSpec.builder(String.class, "UPDATED_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
+        FieldSpec updatedValueFieldSpec = FieldSpec.builder(String.class, "UPDATED_NAME", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).
                 initializer("\"DDDDDDDDD\"").build();
 
-        final String resourceTestPackage = packageName + ".web.rest." + extensionPrefix.toLowerCase();
+        final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
+
+        String dtoPackage = packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase();
+        final ClassName createEntityClassName = ClassName.get(dtoPackage, "Create" + entityName + "DTO");
+        final ClassName updateEntityClassName = ClassName.get(dtoPackage, "Update" + entityName + "DTO");
+
+        MethodSpec createEntityWithObjectMethodSpec = MethodSpec.methodBuilder("create" + entityName + "Entity").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                returns(entityClassName).
+                addParameter(EntityManager.class, "em").
+                addParameter(Object.class, "parent").
+                addStatement("$T entity = new $T()", entityClassName, entityClassName).
+                addComment("entity.setParent(parent)").
+                addComment("entity.setName(DEFAULT_NAME)").
+                addStatement("em.persist(entity)").
+                addComment("parent.getEntities().add(entity)").
+                addStatement("return entity").
+                build();
+
+        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("create" + entityName + "Entity").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                returns(entityClassName).
+                addParameter(EntityManager.class, "em").
+                addStatement("$T entity = new $T()", Object.class, Object.class).
+                addStatement("return create" + entityName + "Entity(em, entity)").
+                build();
+
+        MethodSpec createCreateDtoMethodSpec = MethodSpec.methodBuilder("createCreate" + entityName + "EntityDTO").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                addParameter(Long.class, "parentId").
+                returns(createEntityClassName).
+                addStatement("$T createEntityDto = new $T()", createEntityClassName, createEntityClassName).
+                addComment("createEntityDto.setParentId(parentId)").
+                addComment("createEntityDto.setName(DEFAULT_NAME)").
+                addStatement("return createEntityDto").
+                build();
+
+        MethodSpec createUpdateDtoMethodSpec = MethodSpec.methodBuilder("createUpdate" + entityName + "EntityDTO").
+                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
+                addParameter(Long.class, "id").
+                returns(updateEntityClassName).
+                addStatement("$T updateEntityDto = new $T()", updateEntityClassName, updateEntityClassName).
+                addStatement("updateEntityDto.setId(id)").
+                addComment("updateEntityDto.setName(UPDATED_NAME)").
+                addStatement("return updateEntityDto").
+                build();
+
+        TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityDataUtilResource).
+                addModifiers(Modifier.PUBLIC).
+                addField(defaultValueFieldSpec).
+                addField(updatedValueFieldSpec).
+                addMethod(createEntityWithObjectMethodSpec).
+                addMethod(createEntityMethodSpec).
+                addMethod(createCreateDtoMethodSpec).
+                addMethod(createUpdateDtoMethodSpec).
+                build();
+
+        return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
+                toBuilder().
+                build();
+    }
+
+    private JavaFile createTest(String entityName) {
+
+        final String resourceTestPackage = packageName + ".web.rest." + extensionPrefix.toLowerCase() + "." + entityName.toLowerCase();
         final String entityTestResource = extensionPrefix + entityName + "ResourceIntTest";
 
         final ClassName repoClassName =
@@ -616,16 +680,13 @@ public class SpringClassGenerator {
         String createEntitySimpleName = "Create" + entityName + "DTO";
         final ClassName createEntityClassName = ClassName.get(dtoPackage, createEntitySimpleName);
         String createEntityVarName = createEntitySimpleName.substring(0, 1).toLowerCase() + createEntitySimpleName.substring(1);
-        FieldSpec createEntityFieldSpec = FieldSpec.builder(createEntityClassName, createEntityVarName, Modifier.PRIVATE).build();
 
         String updateEntitySimpleName = "Update" + entityName + "DTO";
         final ClassName updateEntityClassName = ClassName.get(dtoPackage, updateEntitySimpleName);
         String updateEntityVarName = updateEntitySimpleName.substring(0, 1).toLowerCase() + updateEntitySimpleName.substring(1);
-        FieldSpec updateEntityFieldSpec = FieldSpec.builder(updateEntityClassName, updateEntityVarName, Modifier.PRIVATE).build();
 
         final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-        FieldSpec entityFieldSpec = FieldSpec.builder(entityClassName, entityVarName, Modifier.PRIVATE).build();
 
         final ClassName resourceClassName =
                 ClassName.get(packageName + ".web.rest." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Resource");
@@ -645,41 +706,6 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
-        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("createCreateEntityDto").
-                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
-                addParameter(EntityManager.class, "em").
-                returns(createEntityClassName).
-                addStatement("$T " + createEntityVarName + " = new $T()", createEntityClassName, createEntityClassName).
-                addComment("TODO: " + createEntityVarName + ".setName(DEFAULT_VALUE)").
-                addStatement("return " + createEntityVarName).
-                build();
-
-        MethodSpec updateEntityMethodSpec = MethodSpec.methodBuilder("createUpdateEntityDto").
-                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
-                addParameter(EntityManager.class, "em").
-                returns(updateEntityClassName).
-                addStatement("$T " + updateEntityVarName + " = new $T()", updateEntityClassName, updateEntityClassName).
-                addComment("TODO: " + updateEntityVarName + ".setName(UPDATED_VALUE)").
-                addStatement("return " + updateEntityVarName).
-                build();
-
-        MethodSpec entityMethodSpec = MethodSpec.methodBuilder("createEntity").
-                addModifiers(Modifier.PUBLIC, Modifier.STATIC).
-                addParameter(EntityManager.class, "em").
-                returns(entityClassName).
-                addStatement("$T " + entityVarName + " = new $T()", entityClassName, entityClassName).
-                addComment("TODO: " + entityVarName + ".setName(DEFAULT_VALUE)").
-                addStatement("return " + entityVarName).
-                build();
-
-        MethodSpec initTestMethodSpec = MethodSpec.methodBuilder("initTest").
-                addAnnotation(Before.class).
-                addModifiers(Modifier.PUBLIC).
-                addStatement("this." + entityVarName + " = createEntity(em)").
-                addStatement("this." + createEntityVarName + " = createCreateEntityDto(em)").
-                addStatement("this." + updateEntityVarName + " = createUpdateEntityDto(em)").
-                build();
-
         /*
          * Tests
          * ******************************************************************
@@ -688,40 +714,94 @@ public class SpringClassGenerator {
         String baseApiUrl = "/api/" + extensionPrefix.toLowerCase() + "-" + getUrlPath(entityName);
         ParameterizedTypeName listEntityTypeName = ParameterizedTypeName.get(ClassName.get(List.class), entityClassName);
 
-        MethodSpec testEntityCreateMethodSpec = MethodSpec.methodBuilder("create" + entityName).
+        MethodSpec testEntityCreateMethodSpec = MethodSpec.methodBuilder("testCreate" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
                 addException(Exception.class).
+                addComment("some database setup\n").
                 addStatement("int databaseSizeBeforeCreate = " + repoVarName + ".findAll().size()").
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "\")\n").
                         indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
-                        add(".content($T.convertObjectToJsonBytes(this." + createEntityVarName + ")))\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(createCreate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
                         add(".andExpect(status().isCreated());\n\n").
                         unindent().build()).
                 addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
                 addStatement("assertThat(list).hasSize(databaseSizeBeforeCreate + 1)").
                 addStatement("$T test = list.get(list.size() - 1)", entityClassName).
-                addComment("TODO assertThat(test.getName()).isEqualTo(DEFAULT_NAME)").
+                addComment("assertThat(test.getName()).isEqualTo(DEFAULT_NAME)").
                 build();
 
-        MethodSpec testGetEntityMethodSpec = MethodSpec.methodBuilder("get" + entityName).
+        ClassName entityException = ClassName.get(packageName + ".web.rest.errors." + extensionPrefix.toLowerCase(), entityName + "NotFoundException");
+        MethodSpec testEntityCreateInvalidParentMethodSpec = MethodSpec.methodBuilder("testCreate" + entityName + "InvalidParent").
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addComment("some database setup\n").
+                addStatement("int databaseSizeBeforeCreate = " + repoVarName + ".findAll().size()").
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "\")\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(createCreate" + entityName + "EntityDTO($T.MAX_VALUE))))\n", testUtilClassName, Long.class).
+                        add(".andExpect(status().isCreated())).\n").
+                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeCreate)").
+                build();
+
+        MethodSpec tesUpdateEntityMethodSpec = MethodSpec.methodBuilder("testUpdate" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
                 addException(Exception.class).
-                addStatement(repoVarName + ".saveAndFlush(this." + entityVarName + ")").
+                addComment("some database setup\n").
+                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
                 addCode(CodeBlock.builder().
-                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", this." + entityVarName + ".getId()))\n").
+                        add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(createCreate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
+                        add(".andExpect(status().isOk());\n\n").
+                        unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
+                addStatement("$T test = list.get(list.size() - 1)", entityClassName).
+                addComment("assertThat(test.getName()).isEqualTo(UPDATED_NAME)").
+                build();
+
+        MethodSpec updateNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testUpdateNonExistent" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
+                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
+                        add(".content($T.convertObjectToJsonBytes(createUpdate" + entityName + "EntityDTO($T.MAX_VALUE))))\n", testUtilClassName, Long.class).
+                        add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
+                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
+                build();
+
+        MethodSpec testGetEntityMethodSpec = MethodSpec.methodBuilder("testGet" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addComment("some database setup\n").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", 1L)) //update\n").
                         indent().add(".andExpect(status().isOk())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
-                        add(".andExpect(jsonPath(\"$$.id\").value(this." + entityVarName + ".getId().intValue()));\n").
-                        add("// TODO: .andExpect(jsonPath(\"$$.name\").value(DEFAULT_NAME));\n").
+                        add(".andExpect(jsonPath(\"$$.id\").value(1L)); //update\n").
+                        add("// .andExpect(jsonPath(\"$$.name\").value(DEFAULT_NAME));\n").
                         unindent().build()).
                 build();
 
-        MethodSpec testGetNonExistingEntityMethodSpec = MethodSpec.methodBuilder("getNonExisting" + entityName).
+        MethodSpec testGetNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testGetNonExistent" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
@@ -737,95 +817,21 @@ public class SpringClassGenerator {
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
                 addException(Exception.class).
-                addStatement("this." + repoVarName + ".saveAndFlush(this." + entityVarName + ")").
+                addComment("some database setup\n").
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "?sort=id,desc\"))\n").
                         indent().add(".andExpect(status().isOk())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
-                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(this." + entityVarName + ".getId().intValue())));\n").
+                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
                         add("// TODO: .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
                         unindent().build()).
-                build();
-
-        MethodSpec tesUpdateEntityMethodSpec = MethodSpec.methodBuilder("update" + entityName).
-                addAnnotation(Test.class).
-                addAnnotation(Transactional.class).
-                addModifiers(Modifier.PUBLIC).
-                addException(Exception.class).
-                addStatement("this." + repoVarName + ".saveAndFlush(this." + entityVarName + ")").
-                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
-                addStatement("this." + updateEntityVarName + ".setId(this." + entityVarName + ".getId())").
-                addCode(CodeBlock.builder().
-                        add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
-                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
-                        add(".content($T.convertObjectToJsonBytes(this." + updateEntityVarName + ")))\n", testUtilClassName).
-                        add(".andExpect(status().isOk());\n\n").
-                        unindent().build()).
-                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
-                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
-                addStatement("$T test = list.get(list.size() - 1)", entityClassName).
-                addComment("TODO assertThat(test.getName()).isEqualTo(UPDATED_NAME)").
-                build();
-
-        ClassName entityException = ClassName.get(packageName + ".web.rest.errors." + extensionPrefix.toLowerCase(), entityName + "NotFoundException");
-
-        MethodSpec updateNonExistingEntityMethodSpec = MethodSpec.methodBuilder("updateNonExisting" + entityName).
-                addAnnotation(Test.class).
-                addAnnotation(Transactional.class).
-                addModifiers(Modifier.PUBLIC).
-                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
-                addStatement("this." + updateEntityVarName + ".setId($T.MAX_VALUE)", Long.class).
-                addCode(CodeBlock.builder().
-                        add("assertThatThrownBy(() ->\n").
-                        indent().add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
-                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
-                        add(".content($T.convertObjectToJsonBytes(this." + updateEntityVarName + ")))\n", testUtilClassName).
-                        add(".andExpect(status().isOk())).\n").
-                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
-                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
-                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
-                build();
-
-        MethodSpec testDeleteEntityMethodSpec = MethodSpec.methodBuilder("delete" + entityName).
-                addAnnotation(Test.class).
-                addAnnotation(Transactional.class).
-                addModifiers(Modifier.PUBLIC).
-                addException(Exception.class).
-                addStatement("this." + repoVarName + ".saveAndFlush(this." + entityVarName + ")").
-                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
-                addCode(CodeBlock.builder().
-                        add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", this." + entityVarName + ".getId())\n").
-                        indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
-                        add(".accept($T.APPLICATION_JSON_UTF8))\n", testUtilClassName).
-                        add(".andExpect(status().isOk());\n\n").
-                        unindent().build()).
-                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
-                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate - 1)").
-                build();
-
-        MethodSpec testDeleteNonExistingEntityMethodSpec = MethodSpec.methodBuilder("deleteNonExisting" + entityName).
-                addAnnotation(Test.class).
-                addAnnotation(Transactional.class).
-                addModifiers(Modifier.PUBLIC).
-                addStatement("int databaseSizeBeforeUpdate = " + repoVarName + ".findAll().size()").
-                addCode(CodeBlock.builder().
-                        add("assertThatThrownBy(() ->\n").
-                        indent().add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
-                        indent().add(".andExpect(status().isOk())).\n").
-                        unindent().add("hasCause(new $T());\n\n", entityException).unindent().build()).
-                addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
-                addStatement("assertThat(list).hasSize(databaseSizeBeforeUpdate)").
                 build();
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
                 addModifiers(Modifier.PUBLIC).
-                addJavadoc("Run Integration Test with:\n" +
-                        "./mvnw clean test -Dtest=" + entityTestResource + "\n" +
-                        "./mvnw clean test -Dtest=" + entityTestResource + "#getAll" + entityName + "\n" +
-                        "./mvnw clean test -Dtest=" + entityTestResource + "#get*\n\n" +
-                        "TODO: Update DTOs for relevant data and adjust tests for data accordingly.\n").
+                addJavadoc("TODO: Update DTOs for relevant data and adjust tests for data accordingly.\n").
                 addAnnotation(AnnotationSpec.builder(RunWith.class).
                         addMember("value", "$T.class", ClassName.get(SpringRunner.class)).
                         build()).
@@ -834,8 +840,6 @@ public class SpringClassGenerator {
                 addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"unused\"").
                         build()).
-                addField(defaultValueFieldSpec).
-                addField(updatedValueFieldSpec).
                 addField(repoFieldSpec).
                 addField(serviceFieldSpec).
                 addField(jacksonFieldSpec).
@@ -843,27 +847,20 @@ public class SpringClassGenerator {
                 addField(exceptionFieldSpec).
                 addField(entityManagerFieldSpec).
                 addField(restMvcFieldSpec).
-                addField(entityFieldSpec).
-                addField(createEntityFieldSpec).
-                addField(updateEntityFieldSpec).
                 addMethod(setupMethodSpec).
-                addMethod(entityMethodSpec).
-                addMethod(createEntityMethodSpec).
-                addMethod(updateEntityMethodSpec).
-                addMethod(initTestMethodSpec).
                 addMethod(testEntityCreateMethodSpec).
+                addMethod(testEntityCreateInvalidParentMethodSpec).
+                addMethod(tesUpdateEntityMethodSpec).
+                addMethod(updateNonExistingEntityMethodSpec).
                 addMethod(testGetEntityMethodSpec).
                 addMethod(testGetNonExistingEntityMethodSpec).
                 addMethod(testGetAllEntityMethodSpec).
-                addMethod(tesUpdateEntityMethodSpec).
-                addMethod(updateNonExistingEntityMethodSpec).
-                addMethod(testDeleteEntityMethodSpec).
-                addMethod(testDeleteNonExistingEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
                 toBuilder().
                 addStaticImport(testUtilClassName, "createFormattingConversionService").
+                addStaticImport(ClassName.get(resourceTestPackage, entityName + "DataUtil"), "*").
                 addStaticImport(ClassName.get(Assertions.class), "*").
                 addStaticImport(ClassName.get(Matchers.class), "hasItem").
                 addStaticImport(ClassName.get(MockMvcRequestBuilders.class), "*").
