@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultHandlers;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +49,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leep-core");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/psniforms-backend");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -714,6 +715,7 @@ public class SpringClassGenerator {
                         add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "\")\n").
                         indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
                         add(".content($T.convertObjectToJsonBytes(createCreate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
+                        add(".andDo(print())\n").
                         add(".andExpect(status().isCreated());\n\n").
                         unindent().build()).
                 addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
@@ -751,6 +753,7 @@ public class SpringClassGenerator {
                         add("this." + restMvcVarName + ".perform(put(\"" + baseApiUrl + "\")\n").
                         indent().add(".contentType($T.APPLICATION_JSON_UTF8)\n", testUtilClassName).
                         add(".content($T.convertObjectToJsonBytes(createUpdate" + entityName + "EntityDTO(1L)))) //update\n", testUtilClassName).
+                        add(".andDo(print())\n").
                         add(".andExpect(status().isOk());\n\n").
                         unindent().build()).
                 addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
@@ -784,6 +787,7 @@ public class SpringClassGenerator {
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/{id}\", 1L)) //update\n").
                         indent().add(".andExpect(status().isOk())\n").
+                        add(".andDo(print())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
                         add(".andExpect(jsonPath(\"$$.id\").value(1L)); //update\n").
                         add("// .andExpect(jsonPath(\"$$.name\").value(DEFAULT_NAME));\n").
@@ -809,7 +813,8 @@ public class SpringClassGenerator {
                 addComment("some database setup\n").
                 addCode(CodeBlock.builder().
                         add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "?sort=id,desc\"))\n").
-                        indent().add(".andExpect(status().isOk())\n").
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isOk())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
                         add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
                         add("// .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
@@ -823,7 +828,8 @@ public class SpringClassGenerator {
                 addCode(CodeBlock.builder().
                         add("assertThatThrownBy(() ->\n").
                         indent().add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
-                        indent().add(".andExpect(status().isOk())).\n").
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isOk())).\n").
                         unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
                 build();
 
@@ -866,6 +872,7 @@ public class SpringClassGenerator {
                 addStaticImport(ClassName.get(Matchers.class), "hasItem").
                 addStaticImport(ClassName.get(MockMvcRequestBuilders.class), "*").
                 addStaticImport(ClassName.get(MockMvcResultMatchers.class), "*").
+                addStaticImport(ClassName.get(MockMvcResultHandlers.class), "print").
                 build();
     }
 
