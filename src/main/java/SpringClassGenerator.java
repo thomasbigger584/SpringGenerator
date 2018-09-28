@@ -460,6 +460,19 @@ public class SpringClassGenerator {
                 addStatement("return page.map($N::entityToGetDto)", mapperVarName).
                 build();
 
+        MethodSpec recoverDeletedMethodSpec = MethodSpec.methodBuilder("recoverById").
+                addModifiers(Modifier.PUBLIC).
+                returns(getDtoClassName).
+                addParameter(Long.class, "id").
+                addCode(CodeBlock.builder().
+                        add("return findOne(id).map(" + entityVarName + " -> {\n").
+                        indent().add("// " + entityVarName + ".setDeleted(false);\n").
+                        add("return " + mapperVarName + ".entityToGetDto(" + entityVarName + ");\n").
+                        unindent().add("}).orElseGet(() -> {\n").
+                        indent().add("throw new $T();\n", entityException).unindent().
+                        add("});\n").build()).
+                build();
+
         final ClassName superServiceClassName =
                 ClassName.get(packageName + ".service", entityName + "Service");
         TypeSpec.Builder jpaEntityTypeSpecBuilder = TypeSpec.classBuilder(entityService).
@@ -479,7 +492,8 @@ public class SpringClassGenerator {
                 addMethod(findByIdThrowExceptionMethodSpec).
                 addMethod(findDtoThrowExceptionMethodSpec).
                 addMethod(pagedDtoMethodSpec).
-                addMethod(pagedDeletedDtoMethodSpec);
+                addMethod(pagedDeletedDtoMethodSpec).
+                addMethod(recoverDeletedMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
@@ -611,6 +625,20 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 build();
 
+        MethodSpec recoverByIdMethodSpec = MethodSpec.methodBuilder("recover" + entityName + "ById").
+                addAnnotation(AnnotationSpec.builder(PostMapping.class).
+                        addMember("value", "\"/recover/{id}\"").
+                        build()).
+                addParameter(ParameterSpec.builder(Long.class, "id").
+                        addAnnotation(AnnotationSpec.builder(PathVariable.class).
+                                addMember("value", "\"id\"").
+                                build()).build()).
+                addStatement("$T result = $N.recoverById(id)", getDtoClassName, serviceVarName).
+                addStatement("return $T.status($T.OK).body(result)", ResponseEntity.class, HttpStatus.class).
+                returns(getResponseEntityTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
+
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(RestController.class).
@@ -629,6 +657,7 @@ public class SpringClassGenerator {
                 addMethod(getByIdMethodSpec).
                 addMethod(getAllDtoMethodSpec).
                 addMethod(getAllDeletedDtoMethodSpec).
+                addMethod(recoverByIdMethodSpec).
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
