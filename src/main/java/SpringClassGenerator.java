@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -39,6 +41,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class SpringClassGenerator {
 
@@ -49,7 +52,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/psniforms-backend");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/cathedral-eye-backend");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -131,6 +134,44 @@ public class SpringClassGenerator {
         final ClassName superRepoClassName =
                 ClassName.get(packageName + ".repository", entityName + "Repository");
 
+        final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
+        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
+        ParameterizedTypeName pagedEntityTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), entityClassName);
+        String firstLetterAlias = String.valueOf(entityName.charAt(0)).toLowerCase();
+
+        MethodSpec findOneMethod = MethodSpec.methodBuilder("findById").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                addAnnotation(Override.class).
+                addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
+                        "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
+                        "\"WHERE " + firstLetterAlias + ".deleted = FALSE \" +\n" +
+                        "\"AND " + firstLetterAlias + ".id = :id\"").build()).
+                returns(optionalEntityTypeName).
+                addParameter(ParameterSpec.builder(Long.class, "id").
+                        addAnnotation(AnnotationSpec.builder(Param.class).
+                                addMember("value", "\"id\"").
+                                build()).build()).
+                build();
+
+        MethodSpec findAllMethod = MethodSpec.methodBuilder("findAll").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                addAnnotation(Override.class).
+                addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
+                        "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
+                        "\"WHERE " + firstLetterAlias + ".deleted = FALSE \"").build()).
+                returns(pagedEntityTypeName).
+                addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
+                build();
+
+        MethodSpec findAllDeletedMethod = MethodSpec.methodBuilder("findAllDeleted").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
+                        "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
+                        "\"WHERE " + firstLetterAlias + ".deleted = TRUE \"").build()).
+                returns(pagedEntityTypeName).
+                addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
+                build();
+
         TypeSpec jpaEntityTypeSpec = TypeSpec.interfaceBuilder(entityRepository)
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(superRepoClassName)
@@ -138,6 +179,9 @@ public class SpringClassGenerator {
                 .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"unused\"").
                         build())
+                .addMethod(findOneMethod)
+                .addMethod(findAllMethod)
+                .addMethod(findAllDeletedMethod)
                 .build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
@@ -361,11 +405,11 @@ public class SpringClassGenerator {
                         .addStatement("$N.entityToEntityUpdate(result, $N)", mapperVarName, updateDtoVarName)
                         .addStatement("return $N.entityToGetDto(result)", mapperVarName).build()).build();
 
-        MethodSpec deleteThrowExceptionMethodSpec = MethodSpec.methodBuilder("delete").
+        MethodSpec deleteThrowExceptionMethodSpec = MethodSpec.methodBuilder("markDeleted").
                 addModifiers(Modifier.PUBLIC).
                 addParameter(Long.class, "id").
                 addStatement("$T result = findByIdThrowException(id)", entityClassName).
-                addStatement("super.delete(id)").
+                addComment("result.setDeleted(true)").
                 build();
 
         MethodSpec findByIdThrowExceptionMethodSpec = MethodSpec.methodBuilder("findByIdThrowException").
@@ -401,7 +445,18 @@ public class SpringClassGenerator {
                         build()).
                 returns(pagedDtoTypeName).
                 addParameter(Pageable.class, "pageable").
-                addStatement("$T page = findAll(pageable)", pagedEntityTypeName).
+                addStatement("$T page = " + repositoryVarName + ".findAll(pageable)", pagedEntityTypeName).
+                addStatement("return page.map($N::entityToGetDto)", mapperVarName).
+                build();
+
+        MethodSpec pagedDeletedDtoMethodSpec = MethodSpec.methodBuilder("getAllDeleted").
+                addModifiers(Modifier.PUBLIC).
+                addAnnotation(AnnotationSpec.builder(Transactional.class).
+                        addMember("readOnly", "true").
+                        build()).
+                returns(pagedDtoTypeName).
+                addParameter(Pageable.class, "pageable").
+                addStatement("$T page = " + repositoryVarName + ".findAllDeleted(pageable)", pagedEntityTypeName).
                 addStatement("return page.map($N::entityToGetDto)", mapperVarName).
                 build();
 
@@ -423,7 +478,8 @@ public class SpringClassGenerator {
                 addMethod(deleteThrowExceptionMethodSpec).
                 addMethod(findByIdThrowExceptionMethodSpec).
                 addMethod(findDtoThrowExceptionMethodSpec).
-                addMethod(pagedDtoMethodSpec);
+                addMethod(pagedDtoMethodSpec).
+                addMethod(pagedDeletedDtoMethodSpec);
 
         if (supportsElasticSearch) {
             jpaEntityTypeSpecBuilder.addField(repositorySearchField);
@@ -507,8 +563,8 @@ public class SpringClassGenerator {
                         addAnnotation(AnnotationSpec.builder(PathVariable.class).
                                 addMember("value", "\"id\"").
                                 build()).build()).
-                addStatement("$N.delete(id)", serviceVarName).
-                addStatement("return $T.status($T.OK)\n.headers($T.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build()", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("$N.markDeleted(id)", serviceVarName).
+                addStatement("return $T.status($T.NO_CONTENT)\n.headers($T.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build()", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(responseVoidTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -542,6 +598,19 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 build();
 
+        MethodSpec getAllDeletedDtoMethodSpec = MethodSpec.methodBuilder("getAllDeleted" + entityName).
+                addAnnotation(AnnotationSpec.builder(GetMapping.class).
+                        addMember("value", "\"/deleted\"").
+                        build()).
+                addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
+                addStatement("$T page = $N.getAllDeleted(pageable)", pageDtoTypeName, serviceVarName).
+                addStatement("$T headers = $T.generatePaginationHttpHeaders(page, \"/api/ext-$L/deleted\")",
+                        HttpHeaders.class, paginationUtilClassName, resourceUriName).
+                addStatement("return new $T<>(page.getContent(), headers, $T.OK)", ResponseEntity.class, HttpStatus.class).
+                returns(responseDtoTypeName).
+                addModifiers(Modifier.PUBLIC).
+                build();
+
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(entityRepository).
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(RestController.class).
@@ -559,6 +628,7 @@ public class SpringClassGenerator {
                 addMethod(deleteMethodSpec).
                 addMethod(getByIdMethodSpec).
                 addMethod(getAllDtoMethodSpec).
+                addMethod(getAllDeletedDtoMethodSpec).
                 build();
 
         return buildJavaFile(repositoryPackage, jpaEntityTypeSpec);
