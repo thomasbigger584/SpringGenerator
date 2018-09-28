@@ -158,7 +158,7 @@ public class SpringClassGenerator {
                 addAnnotation(Override.class).
                 addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
                         "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
-                        "\"WHERE " + firstLetterAlias + ".deleted = FALSE \"").build()).
+                        "\"WHERE " + firstLetterAlias + ".deleted = FALSE\"").build()).
                 returns(pagedEntityTypeName).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 build();
@@ -167,7 +167,7 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
                         "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
-                        "\"WHERE " + firstLetterAlias + ".deleted = TRUE \"").build()).
+                        "\"WHERE " + firstLetterAlias + ".deleted = TRUE\"").build()).
                 returns(pagedEntityTypeName).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 build();
