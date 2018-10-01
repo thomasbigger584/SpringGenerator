@@ -7,6 +7,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
+import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValueCheckStrategy;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -251,16 +253,19 @@ public class SpringClassGenerator {
                 addParameter(entityClassName, entityVarName).
                 build();
 
-        MethodSpec updateEntityMethod = MethodSpec.methodBuilder("entityToEntityUpdate").
-                addModifiers(Modifier.PUBLIC, Modifier.DEFAULT).
-                addParameter(entityClassName, entityVarName).
+        MethodSpec updateEntityMethod = MethodSpec.methodBuilder("updateEntityToEntity").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addParameter(updateDtoClassName, "update" + entityName + "Dto").
+                addParameter(ParameterSpec.builder(entityClassName, entityVarName).
+                        addAnnotation(MappingTarget.class).build()).
+                returns(entityClassName).
                 build();
 
         TypeSpec mapperTypeSpec = TypeSpec.interfaceBuilder(entityMapper)
                 .addModifiers(Modifier.PUBLIC)
                 .addAnnotation(AnnotationSpec.builder(Mapper.class).
                         addMember("componentModel", "\"spring\"").
+                        addMember("nullValueCheckStrategy", "ALWAYS").
                         addMember("uses", "{,}").
                         build())
                 .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
@@ -271,7 +276,9 @@ public class SpringClassGenerator {
                 .addMethod(updateEntityMethod)
                 .build();
 
-        return buildJavaFile(mapperPackage, mapperTypeSpec);
+        return buildJavaFile(mapperPackage, mapperTypeSpec).toBuilder().
+                addStaticImport(NullValueCheckStrategy.class, "ALWAYS").
+                build();
     }
 
     private JavaFile createSearchRespository(String entityName) {
@@ -324,6 +331,10 @@ public class SpringClassGenerator {
         String servicePackage = packageName + ".service." + extensionPrefix.toLowerCase();
         String entityService = extensionPrefix + entityName + "Service";
 
+        final ClassName superRepositoryClassName =
+                ClassName.get(packageName + ".repository", entityName + "Repository");
+        final String superRepositoryVarName = Character.toLowerCase(entityName.charAt(0)) + entityName.substring(1) + "Repository";
+
         final ClassName repositoryClassName =
                 ClassName.get(packageName + ".repository." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Repository");
         final String repositoryVarName = extensionPrefix.toLowerCase() + entityName + "Repository";
@@ -349,10 +360,11 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
                         addMember("value", "\"SpringJavaInjectionPointsAutowiringInspection\"").build()).
+                addParameter(superRepositoryClassName, superRepositoryVarName).
                 addParameter(repositoryClassName, repositoryVarName);
 
         String superStatement = "super(%s)";
-        String parameters = repositoryVarName + ((supportsElasticSearch) ? ", " + repositorySearchVarName : "");
+        String parameters = superRepositoryVarName + ((supportsElasticSearch) ? ", " + repositorySearchVarName : "");
         superStatement = String.format(superStatement, parameters);
         constructorBuilder.addStatement(superStatement);
 
@@ -402,7 +414,7 @@ public class SpringClassGenerator {
                 addParameter(updateDtoClassName, updateDtoVarName).
                 addCode(CodeBlock.builder()
                         .addStatement("$T result = findByIdThrowException($N.getId())", entityClassName, updateDtoVarName)
-                        .addStatement("$N.entityToEntityUpdate(result, $N)", mapperVarName, updateDtoVarName)
+                        .addStatement("result = $N.updateEntityToEntity($N, result)", mapperVarName, updateDtoVarName)
                         .addStatement("return $N.entityToGetDto(result)", mapperVarName).build()).build();
 
         MethodSpec deleteThrowExceptionMethodSpec = MethodSpec.methodBuilder("markDeleted").
@@ -730,9 +742,7 @@ public class SpringClassGenerator {
                 addMethod(createUpdateDtoMethodSpec).
                 build();
 
-        return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
-                toBuilder().
-                build();
+        return buildJavaFile(resourceTestPackage, testResourceTypeSpec);
     }
 
     private JavaFile createTest(String entityName) {
