@@ -9,6 +9,7 @@ import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValueCheckStrategy;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -253,7 +254,7 @@ public class SpringClassGenerator {
                 addParameter(entityClassName, entityVarName).
                 build();
 
-        MethodSpec updateEntityMethod = MethodSpec.methodBuilder("updateEntityToEntity").
+        MethodSpec updateEntityMethod = MethodSpec.methodBuilder("updateEntity").
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addParameter(updateDtoClassName, "update" + entityName + "Dto").
                 addParameter(ParameterSpec.builder(entityClassName, entityVarName).
@@ -414,7 +415,7 @@ public class SpringClassGenerator {
                 addParameter(updateDtoClassName, updateDtoVarName).
                 addCode(CodeBlock.builder()
                         .addStatement("$T result = findByIdThrowException($N.getId())", entityClassName, updateDtoVarName)
-                        .addStatement("result = $N.updateEntityToEntity($N, result)", mapperVarName, updateDtoVarName)
+                        .addStatement("result = $N.updateEntity($N, result)", mapperVarName, updateDtoVarName)
                         .addStatement("return $N.entityToGetDto(result)", mapperVarName).build()).build();
 
         MethodSpec deleteThrowExceptionMethodSpec = MethodSpec.methodBuilder("markDeleted").
@@ -665,9 +666,9 @@ public class SpringClassGenerator {
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(updateMethodSpec).
-                addMethod(deleteMethodSpec).
                 addMethod(getByIdMethodSpec).
                 addMethod(getAllDtoMethodSpec).
+                addMethod(deleteMethodSpec).
                 addMethod(getAllDeletedDtoMethodSpec).
                 addMethod(recoverByIdMethodSpec).
                 build();
@@ -914,7 +915,7 @@ public class SpringClassGenerator {
                         unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
                 build();
 
-        MethodSpec testGetAllEntityMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
+        MethodSpec testGetAllEntityMethodSpec = MethodSpec.methodBuilder("testGetAll" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
                 addModifiers(Modifier.PUBLIC).
@@ -930,6 +931,27 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
+
+        ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
+        ParameterizedTypeName pageEntityTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), entityClassName);
+        MethodSpec testDeleteEntityMethodSpec = MethodSpec.methodBuilder("testDelete" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addComment("some database setup\n").
+                addCode(CodeBlock.builder().
+                        addStatement("$T pageable = $T.any($T.class)", Pageable.class, Mockito.class, Pageable.class).
+                        addStatement("int databaseSizeBeforeDelete = " + repoVarName + ".findAll(pageable).getContent().size()").
+                        add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", 1L))\n").
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isNoContent());\n\n").
+                        unindent().addStatement("$T list = " + repoVarName + ".findAll(pageable)", pageEntityTypeName).
+                        add("assertThat(list.getContent()).hasSize(databaseSizeBeforeDelete - 1);\n\n").
+                        add("$T test = " + repoVarName + ".findById(1L); // update\n", optionalEntityTypeName).
+                        addStatement("assertThat(test.isPresent()).isFalse();").build()).
+                build();
+
         MethodSpec testDeleteNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testDeleteNonExistent" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
@@ -938,7 +960,7 @@ public class SpringClassGenerator {
                         add("assertThatThrownBy(() ->\n").
                         indent().add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", $T.MAX_VALUE))\n", Long.class).
                         indent().add(".andDo(print())\n").
-                        add(".andExpect(status().isOk())).\n").
+                        add(".andExpect(status().isNoContent())).\n").
                         unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
                 build();
 
@@ -970,6 +992,7 @@ public class SpringClassGenerator {
                 addMethod(testGetEntityMethodSpec).
                 addMethod(testGetNonExistingEntityMethodSpec).
                 addMethod(testGetAllEntityMethodSpec).
+                addMethod(testDeleteEntityMethodSpec).
                 addMethod(testDeleteNonExistingEntityMethodSpec).
                 build();
 
