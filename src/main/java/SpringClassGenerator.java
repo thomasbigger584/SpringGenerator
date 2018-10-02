@@ -982,6 +982,35 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
+
+        MethodSpec testRecoverEntityMethodSpec = MethodSpec.methodBuilder("testRecoverDeleted" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addComment("some database setup\n").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "/recover/{id}\", 1L)) // update\n").
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isOk())\n").
+                        add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
+                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
+                        add("// .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
+                        unindent().build()).
+                build();
+
+        MethodSpec testRecoverNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testRecoverNonExistent" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addCode(CodeBlock.builder().
+                        add("assertThatThrownBy(() ->\n").
+                        indent().add("this." + restMvcVarName + ".perform(post(\"" + baseApiUrl + "/recover/{id}\", $T.MAX_VALUE))\n", Long.class).
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isOk())).\n").
+                        unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
+                build();
+
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
         ClassName appClassName = ClassName.get(packageName, appMainClass);
         TypeSpec testResourceTypeSpec = TypeSpec.classBuilder(entityTestResource).
@@ -1013,6 +1042,8 @@ public class SpringClassGenerator {
                 addMethod(testDeleteEntityMethodSpec).
                 addMethod(testDeleteNonExistingEntityMethodSpec).
                 addMethod(testGetAllDeletedEntityMethodSpec).
+                addMethod(testRecoverEntityMethodSpec).
+                addMethod(testRecoverNonExistingEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
