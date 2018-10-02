@@ -697,8 +697,10 @@ public class SpringClassGenerator {
                 returns(entityClassName).
                 addParameter(EntityManager.class, "em").
                 addParameter(Object.class, "parent").
+                addParameter(Boolean.class, "deleted").
                 addStatement("$T entity = new $T()", entityClassName, entityClassName).
                 addComment("entity.setParent(parent)").
+                addComment("entity.setDeleted(deleted)").
                 addComment("entity.setName(DEFAULT_NAME)").
                 addStatement("em.persist(entity)").
                 addComment("parent.getEntities().add(entity)").
@@ -709,8 +711,9 @@ public class SpringClassGenerator {
                 addModifiers(Modifier.PUBLIC, Modifier.STATIC).
                 returns(entityClassName).
                 addParameter(EntityManager.class, "em").
+                addParameter(Boolean.class, "deleted").
                 addStatement("$T entity = new $T()", Object.class, Object.class).
-                addStatement("return create" + entityName + "Entity(em, entity)").
+                addStatement("return create" + entityName + "Entity(em, entity, deleted)").
                 build();
 
         MethodSpec createCreateDtoMethodSpec = MethodSpec.methodBuilder("createCreate" + entityName + "EntityDTO").
@@ -931,7 +934,6 @@ public class SpringClassGenerator {
                         unindent().build()).
                 build();
 
-
         ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
         ParameterizedTypeName pageEntityTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), entityClassName);
         MethodSpec testDeleteEntityMethodSpec = MethodSpec.methodBuilder("testDelete" + entityName).
@@ -949,7 +951,7 @@ public class SpringClassGenerator {
                         unindent().addStatement("$T list = " + repoVarName + ".findAll(pageable)", pageEntityTypeName).
                         add("assertThat(list.getContent()).hasSize(databaseSizeBeforeDelete - 1);\n\n").
                         add("$T test = " + repoVarName + ".findById(1L); // update\n", optionalEntityTypeName).
-                        addStatement("assertThat(test.isPresent()).isFalse();").build()).
+                        addStatement("assertThat(test.isPresent()).isFalse()").build()).
                 build();
 
         MethodSpec testDeleteNonExistingEntityMethodSpec = MethodSpec.methodBuilder("testDeleteNonExistent" + entityName).
@@ -962,6 +964,22 @@ public class SpringClassGenerator {
                         indent().add(".andDo(print())\n").
                         add(".andExpect(status().isNoContent())).\n").
                         unindent().add("hasCause(new $T());\n", entityException).unindent().build()).
+                build();
+
+        MethodSpec testGetAllDeletedEntityMethodSpec = MethodSpec.methodBuilder("testGetAllDeleted" + entityName).
+                addAnnotation(Test.class).
+                addAnnotation(Transactional.class).
+                addModifiers(Modifier.PUBLIC).
+                addException(Exception.class).
+                addComment("some database setup\n").
+                addCode(CodeBlock.builder().
+                        add("this." + restMvcVarName + ".perform(get(\"" + baseApiUrl + "/deleted?sort=id,desc\"))\n").
+                        indent().add(".andDo(print())\n").
+                        add(".andExpect(status().isOk())\n").
+                        add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
+                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
+                        add("// .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
+                        unindent().build()).
                 build();
 
         ClassName securityBeanConfigClassName = ClassName.get(packageName + ".config", "SecurityBeanOverrideConfiguration");
@@ -994,6 +1012,7 @@ public class SpringClassGenerator {
                 addMethod(testGetAllEntityMethodSpec).
                 addMethod(testDeleteEntityMethodSpec).
                 addMethod(testDeleteNonExistingEntityMethodSpec).
+                addMethod(testGetAllDeletedEntityMethodSpec).
                 build();
 
         return buildJavaFile(resourceTestPackage, testResourceTypeSpec).
