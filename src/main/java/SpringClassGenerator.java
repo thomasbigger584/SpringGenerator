@@ -402,6 +402,7 @@ public class SpringClassGenerator {
                 addParameter(createDtoClassName, createDtoVarName).
                 addCode(CodeBlock.builder().
                         addStatement("$T $N = $N.createDtoToEntity($N)", entityClassName, entityVarName, mapperVarName, createDtoVarName).
+                        addStatement("// " + entityVarName + ".setDeleted(false);").
                         addStatement("$N = save($N)", entityVarName, entityVarName).
                         addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
                         build()).
