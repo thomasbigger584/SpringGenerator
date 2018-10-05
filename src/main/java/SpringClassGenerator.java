@@ -9,7 +9,6 @@ import org.junit.runner.RunWith;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValueCheckStrategy;
-import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,7 +54,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/cathedral-eye-backend");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/leep-platform/leep-tickets");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
@@ -140,6 +139,7 @@ public class SpringClassGenerator {
         final ClassName entityClassName = ClassName.get(packageName + ".domain", entityName);
         ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
         ParameterizedTypeName pagedEntityTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), entityClassName);
+        ParameterizedTypeName listEntityTypeName = ParameterizedTypeName.get(ClassName.get(List.class), entityClassName);
         String firstLetterAlias = String.valueOf(entityName.charAt(0)).toLowerCase();
 
         MethodSpec findOneMethod = MethodSpec.methodBuilder("findById").
@@ -156,7 +156,7 @@ public class SpringClassGenerator {
                                 build()).build()).
                 build();
 
-        MethodSpec findAllMethod = MethodSpec.methodBuilder("findAll").
+        MethodSpec findAllPagedMethod = MethodSpec.methodBuilder("findAll").
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(Override.class).
                 addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
@@ -164,6 +164,15 @@ public class SpringClassGenerator {
                         "\"WHERE " + firstLetterAlias + ".deleted = FALSE\"").build()).
                 returns(pagedEntityTypeName).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
+                build();
+
+        MethodSpec findAllListMethod = MethodSpec.methodBuilder("findAll").
+                addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
+                addAnnotation(Override.class).
+                addAnnotation(AnnotationSpec.builder(Query.class).addMember("value", "\"SELECT " + firstLetterAlias + " \" +\n" +
+                        "\"FROM " + entityName + " " + firstLetterAlias + " \" +\n" +
+                        "\"WHERE " + firstLetterAlias + ".deleted = FALSE\"").build()).
+                returns(listEntityTypeName).
                 build();
 
         MethodSpec findAllDeletedMethod = MethodSpec.methodBuilder("findAllDeleted").
@@ -183,7 +192,8 @@ public class SpringClassGenerator {
                         addMember("value", "\"unused\"").
                         build())
                 .addMethod(findOneMethod)
-                .addMethod(findAllMethod)
+                .addMethod(findAllPagedMethod)
+                .addMethod(findAllListMethod)
                 .addMethod(findAllDeletedMethod)
                 .build();
 
@@ -936,7 +946,6 @@ public class SpringClassGenerator {
                 build();
 
         ParameterizedTypeName optionalEntityTypeName = ParameterizedTypeName.get(ClassName.get(Optional.class), entityClassName);
-        ParameterizedTypeName pageEntityTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), entityClassName);
         MethodSpec testDeleteEntityMethodSpec = MethodSpec.methodBuilder("testDelete" + entityName).
                 addAnnotation(Test.class).
                 addAnnotation(Transactional.class).
@@ -944,13 +953,12 @@ public class SpringClassGenerator {
                 addException(Exception.class).
                 addComment("some database setup\n").
                 addCode(CodeBlock.builder().
-                        addStatement("$T pageable = $T.any($T.class)", Pageable.class, Mockito.class, Pageable.class).
-                        addStatement("int databaseSizeBeforeDelete = " + repoVarName + ".findAll(pageable).getContent().size()").
+                        addStatement("int databaseSizeBeforeDelete = " + repoVarName + ".findAll().size()").
                         add("this." + restMvcVarName + ".perform(delete(\"" + baseApiUrl + "/{id}\", 1L))\n").
                         indent().add(".andDo(print())\n").
                         add(".andExpect(status().isNoContent());\n\n").
-                        unindent().addStatement("$T list = " + repoVarName + ".findAll(pageable)", pageEntityTypeName).
-                        add("assertThat(list.getContent()).hasSize(databaseSizeBeforeDelete - 1);\n\n").
+                        unindent().addStatement("$T list = " + repoVarName + ".findAll()", listEntityTypeName).
+                        add("assertThat(list).hasSize(databaseSizeBeforeDelete - 1);\n\n").
                         add("$T test = " + repoVarName + ".findById(1L); // update\n", optionalEntityTypeName).
                         addStatement("assertThat(test.isPresent()).isFalse()").build()).
                 build();
@@ -995,8 +1003,8 @@ public class SpringClassGenerator {
                         indent().add(".andDo(print())\n").
                         add(".andExpect(status().isOk())\n").
                         add(".andExpect(content().contentType($T.APPLICATION_JSON_UTF8_VALUE))\n", MediaType.class).
-                        add(".andExpect(jsonPath(\"$$.[*].id\").value(hasItem(1L))); //update\n").
-                        add("// .andExpect(jsonPath(\"$$.[*].name\").value(hasItem(DEFAULT_NAME)));\n").
+                        add(".andExpect(jsonPath(\"$$.id\").value(1L)); //update\n").
+                        add("// .andExpect(jsonPath(\"$$.name\").value(DEFAULT_NAME));\n").
                         unindent().build()).
                 build();
 
