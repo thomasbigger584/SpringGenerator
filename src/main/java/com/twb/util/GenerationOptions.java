@@ -10,6 +10,8 @@ public class GenerationOptions {
 
     private boolean supportsElasticSearch;
 
+    private String appMainClass;
+
     public String getEntityName() {
         return entityName;
     }
@@ -40,5 +42,13 @@ public class GenerationOptions {
 
     public void setSupportsElasticSearch(boolean supportsElasticSearch) {
         this.supportsElasticSearch = supportsElasticSearch;
+    }
+
+    public String getAppMainClass() {
+        return appMainClass;
+    }
+
+    public void setAppMainClass(String appMainClass) {
+        this.appMainClass = appMainClass;
     }
 }
