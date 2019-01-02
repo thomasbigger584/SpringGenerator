@@ -35,7 +35,7 @@ public class CreateDataUtil {
         final ClassName createEntityClassName = ClassName.get(dtoPackage, "Create" + entityName + "DTO");
         final ClassName updateEntityClassName = ClassName.get(dtoPackage, "Update" + entityName + "DTO");
 
-        MethodSpec createEntityWithObjectMethodSpec = MethodSpec.methodBuilder("com/twb/create" + entityName + "Entity").
+        MethodSpec createEntityWithObjectMethodSpec = MethodSpec.methodBuilder("create" + entityName + "Entity").
                 addModifiers(Modifier.PUBLIC, Modifier.STATIC).
                 returns(entityClassName).
                 addParameter(EntityManager.class, "em").
@@ -50,13 +50,13 @@ public class CreateDataUtil {
                 addStatement("return entity").
                 build();
 
-        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("com/twb/create" + entityName + "Entity").
+        MethodSpec createEntityMethodSpec = MethodSpec.methodBuilder("create" + entityName + "Entity").
                 addModifiers(Modifier.PUBLIC, Modifier.STATIC).
                 returns(entityClassName).
                 addParameter(EntityManager.class, "em").
                 addParameter(Boolean.class, "deleted").
                 addStatement("$T entity = new $T()", Object.class, Object.class).
-                addStatement("return com.twb.create" + entityName + "Entity(em, entity, deleted)").
+                addStatement("return create" + entityName + "Entity(em, entity, deleted)").
                 build();
 
         MethodSpec createCreateDtoMethodSpec = MethodSpec.methodBuilder("createCreate" + entityName + "EntityDTO").

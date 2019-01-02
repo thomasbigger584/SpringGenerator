@@ -85,14 +85,14 @@ public class CreateService {
         ClassName updateDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Update" + entityName + "DTO");
-        String createDtoVarName = "com/twb/create" + entityName + "Dto";
+        String createDtoVarName = "create" + entityName + "Dto";
         String updateDtoVarName = "update" + entityName + "Dto";
 
         final ClassName entityClassName =
                 ClassName.get(packageName + ".domain", entityName);
 
         String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-        MethodSpec createMethodSpec = MethodSpec.methodBuilder("com/twb/create").
+        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create").
                 addModifiers(Modifier.PUBLIC).
                 returns(getDtoClassName).
                 addParameter(createDtoClassName, createDtoVarName).

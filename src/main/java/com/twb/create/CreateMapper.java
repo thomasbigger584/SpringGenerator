@@ -35,7 +35,7 @@ public class CreateMapper {
         MethodSpec createToEntityMethod = MethodSpec.methodBuilder("createDtoToEntity").
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 returns(entityClassName).
-                addParameter(createDtoClassName, "com/twb/create" + entityName + "Dto").
+                addParameter(createDtoClassName, "create" + entityName + "Dto").
                 build();
 
         ClassName getDtoClassName =

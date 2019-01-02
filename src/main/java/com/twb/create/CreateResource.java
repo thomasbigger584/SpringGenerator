@@ -54,7 +54,7 @@ public class CreateResource {
         ClassName createDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
-        String createDtoVarName = "com/twb/create" + entityName + "Dto";
+        String createDtoVarName = "create" + entityName + "Dto";
 
         ClassName updateDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
@@ -66,14 +66,14 @@ public class CreateResource {
                         "Get" + entityName + "DTO");
         ParameterizedTypeName getResponseEntityTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), getDtoClassName);
 
-        ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.com.twb.util", "HeaderUtil");
+        ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.util", "HeaderUtil");
 
-        MethodSpec createMethodSpec = MethodSpec.methodBuilder("com/twb/create" + entityName).
+        MethodSpec createMethodSpec = MethodSpec.methodBuilder("create" + entityName).
                 addAnnotation(PostMapping.class).
                 addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).
                         addAnnotation(Valid.class).
                         addAnnotation(RequestBody.class).build()).
-                addStatement("$T result = $N.com.twb.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
+                addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
                 addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, result.getId().toString()))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
@@ -122,7 +122,7 @@ public class CreateResource {
         ParameterizedTypeName listDtoTypeName = ParameterizedTypeName.get(ClassName.get(List.class), getDtoClassName);
         ParameterizedTypeName responseDtoTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), listDtoTypeName);
         ParameterizedTypeName pageDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
-        ClassName paginationUtilClassName = ClassName.get(packageName + ".web.rest.com.twb.util", "PaginationUtil");
+        ClassName paginationUtilClassName = ClassName.get(packageName + ".web.rest.util", "PaginationUtil");
         MethodSpec getAllDtoMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
                 addAnnotation(GetMapping.class).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
