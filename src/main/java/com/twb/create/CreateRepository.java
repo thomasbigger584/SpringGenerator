@@ -15,6 +15,11 @@ import java.util.Optional;
 
 public class CreateRepository {
 
+    public static final String FIND_BY_ID = "findById";
+    public static final String FIND_ALL = "findAll";
+    public static final String FIND_DELETED_BY_ID = "findDeletedById";
+    public static final String FIND_ALL_DELETED = "findAllDeleted";
+
     private final GenerationOptions options;
 
     public CreateRepository(GenerationOptions options) {
@@ -40,7 +45,7 @@ public class CreateRepository {
 
         CreateQuery createQuery = new CreateQuery(entityName);
 
-        MethodSpec findOneMethod = MethodSpec.methodBuilder("findById").
+        MethodSpec findOneMethod = MethodSpec.methodBuilder(FIND_BY_ID).
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(Override.class).
                 addAnnotation(AnnotationSpec.builder(Query.class).
@@ -52,7 +57,7 @@ public class CreateRepository {
                                 build()).build()).
                 build();
 
-        MethodSpec findAllPagedMethod = MethodSpec.methodBuilder("findAll").
+        MethodSpec findAllPagedMethod = MethodSpec.methodBuilder(FIND_ALL).
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(Override.class).
                 addAnnotation(AnnotationSpec.builder(Query.class).
@@ -61,7 +66,7 @@ public class CreateRepository {
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 build();
 
-        MethodSpec findAllListMethod = MethodSpec.methodBuilder("findAll").
+        MethodSpec findAllListMethod = MethodSpec.methodBuilder(FIND_ALL).
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(Override.class).
                 addAnnotation(AnnotationSpec.builder(Query.class).
@@ -69,7 +74,7 @@ public class CreateRepository {
                 returns(listEntityTypeName).
                 build();
 
-        MethodSpec findOneDeletedMethod = MethodSpec.methodBuilder("findDeletedById").
+        MethodSpec findOneDeletedMethod = MethodSpec.methodBuilder(FIND_DELETED_BY_ID).
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(AnnotationSpec.builder(Query.class).
                         addMember("value", createQuery.createFileDeletedByIdQuery()).build()).
@@ -80,7 +85,7 @@ public class CreateRepository {
                                 build()).build()).
                 build();
 
-        MethodSpec findAllDeletedMethod = MethodSpec.methodBuilder("findAllDeleted").
+        MethodSpec findAllDeletedMethod = MethodSpec.methodBuilder(FIND_ALL_DELETED).
                 addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT).
                 addAnnotation(AnnotationSpec.builder(Query.class).
                         addMember("value", createQuery.createFindAllDeletedQuery()).build()).
