@@ -27,7 +27,7 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Desktop/projects/backend/bludot-backend");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Projects/BExpress/bexpress-backend");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
