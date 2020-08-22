@@ -97,9 +97,6 @@ public class CreateRepository {
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(superRepoClassName)
                 .addAnnotation(Repository.class)
-                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build())
                 .addMethod(findOneMethod)
                 .addMethod(findAllPagedMethod)
                 .addMethod(findAllListMethod)

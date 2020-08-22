@@ -50,18 +50,21 @@ public class CreateService {
                 ClassName.get(packageName + ".service.mapper." + extensionPrefix.toLowerCase(), extensionPrefix + entityName + "Mapper");
         final String mapperVarName = extensionPrefix.toLowerCase() + entityName + "Mapper";
 
+        final ClassName superMapperClassName =
+                ClassName.get(packageName + ".service.mapper", entityName + "Mapper");
+        final String superMapperVarName = Character.toLowerCase(entityName.charAt(0)) + entityName.substring(1) + "Mapper";
+
         FieldSpec mapperField = FieldSpec.builder(mapperClassName,
                 mapperVarName, Modifier.PRIVATE, Modifier.FINAL).build();
 
         MethodSpec.Builder constructorBuilder = MethodSpec.constructorBuilder().
                 addModifiers(Modifier.PUBLIC).
-                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"SpringJavaInjectionPointsAutowiringInspection\"").build()).
                 addParameter(superRepositoryClassName, superRepositoryVarName).
+                addParameter(superMapperClassName, superMapperVarName).
                 addParameter(repositoryClassName, repositoryVarName);
 
         String superStatement = "super(%s)";
-        String parameters = superRepositoryVarName + ((supportsElasticSearch) ? ", " + repositorySearchVarName : "");
+        String parameters = superRepositoryVarName + ", " + superMapperVarName + ((supportsElasticSearch) ? ", " + repositorySearchVarName : "");
         superStatement = String.format(superStatement, parameters);
         constructorBuilder.addStatement(superStatement);
 
@@ -99,7 +102,7 @@ public class CreateService {
                 addCode(CodeBlock.builder().
                         addStatement("$T $N = $N.createDtoToEntity($N)", entityClassName, entityVarName, mapperVarName, createDtoVarName).
                         addStatement("// " + entityVarName + ".setDeleted(false);").
-                        addStatement("$N = save($N)", entityVarName, entityVarName).
+                        addStatement("$N = $N.save($N)", entityVarName, repositoryVarName, entityVarName).
                         addStatement("return $N.entityToGetDto($N)", mapperVarName, entityVarName).
                         build()).
                 build();
@@ -200,7 +203,7 @@ public class CreateService {
                 returns(getDtoClassName).
                 addParameter(Long.class, "id").
                 addCode(CodeBlock.builder().
-                        add("return findOne(id).map(" + entityVarName + " -> {\n").
+                        add("return "+ repositoryVarName + ".findById(id).map(" + entityVarName + " -> {\n").
                         indent().add("// " + entityVarName + ".setDeleted(false);\n").
                         add("return " + mapperVarName + ".entityToGetDto(" + entityVarName + ");\n").
                         unindent().add("}).orElseGet(() -> {\n").
@@ -214,9 +217,6 @@ public class CreateService {
                 addModifiers(Modifier.PUBLIC).
                 addAnnotation(Service.class).
                 addAnnotation(Transactional.class).
-                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build()).
                 superclass(superServiceClassName).
                 addField(repositoryField).
                 addField(mapperField).

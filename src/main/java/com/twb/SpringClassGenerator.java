@@ -27,13 +27,13 @@ public class SpringClassGenerator {
     private String appMainClass = null;
 
     @Parameter(names = "-p", converter = PathConverter.class, description = "Path to Project Path")
-    private Path projectPath = Paths.get("/Users/thomasbigger/Projects/BExpress/bexpress-backend");
+    private Path projectPath = Paths.get("/Users/thomasbigger/Projects/TradingBotApp/api");
 
     @Parameter(names = "--ep", description = "Extension Prefix for generated files")
     private String extensionPrefix = "Ext";
 
     @Parameter(names = "--pn", description = "Package name for generated files")
-    private String packageName = "com.pa.twb";
+    private String packageName = "com.twb.tradingbotapp";
 
     @Parameter(names = "--es", description = "Supports elastic search")
     private boolean supportsElasticSearch = false;
@@ -42,7 +42,7 @@ public class SpringClassGenerator {
     private boolean help = false;
 
     @Parameter(names = "--st", description = "Skip Resource Test")
-    private boolean skipTest = false;
+    private boolean skipTest = true;
 
     public static void main(String... args) {
         SpringClassGenerator scg = new SpringClassGenerator();

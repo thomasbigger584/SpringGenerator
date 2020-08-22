@@ -53,4 +53,5 @@ dependencies {
     compile 'junit:junit:4.12'
     compile 'org.springframework.boot:spring-boot-starter-test'
     apt 'org.mapstruct:mapstruct-processor:1.2.0.Final'
+    compile 'org.projectlombok:lombok:1.18.12'
 }

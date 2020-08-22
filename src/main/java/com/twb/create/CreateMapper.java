@@ -68,9 +68,6 @@ public class CreateMapper {
                         addMember("nullValueCheckStrategy", "ALWAYS").
                         addMember("uses", "{,}").
                         build())
-                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build())
                 .addMethod(createToEntityMethod)
                 .addMethod(getToEntityMethod)
                 .addMethod(updateEntityMethod)

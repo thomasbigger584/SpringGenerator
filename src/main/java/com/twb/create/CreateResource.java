@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import javax.lang.model.element.Modifier;
 import javax.validation.Valid;
@@ -46,11 +47,6 @@ public class CreateResource {
 
         String resourceUriName = getUrlPath(entityName);
 
-        String entityVarName = entityName.substring(0, 1).toLowerCase() + entityName.substring(1);
-        FieldSpec entityNameFieldSpec =
-                FieldSpec.builder(String.class, "ENTITY_NAME", Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).
-                        initializer("\"" + entityVarName + "\"").build();
-
         ClassName createDtoClassName =
                 ClassName.get(packageName + ".service." + extensionPrefix.toLowerCase() + ".dto." + entityName.toLowerCase(),
                         "Create" + entityName + "DTO");
@@ -66,15 +62,13 @@ public class CreateResource {
                         "Get" + entityName + "DTO");
         ParameterizedTypeName getResponseEntityTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), getDtoClassName);
 
-        ClassName headerUtilClassName = ClassName.get(packageName + ".web.rest.util", "HeaderUtil");
-
         MethodSpec createMethodSpec = MethodSpec.methodBuilder("create" + entityName).
                 addAnnotation(PostMapping.class).
                 addParameter(ParameterSpec.builder(createDtoClassName, createDtoVarName).
                         addAnnotation(Valid.class).
                         addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.create($N)", getDtoClassName, serviceVarName, createDtoVarName).
-                addStatement("return $T.status($T.CREATED)\n.headers($T.createEntityCreationAlert(ENTITY_NAME, result.getId().toString()))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("return $T.status($T.CREATED)\n.body(result)", ResponseEntity.class, HttpStatus.class).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -85,7 +79,7 @@ public class CreateResource {
                         addAnnotation(Valid.class).
                         addAnnotation(RequestBody.class).build()).
                 addStatement("$T result = $N.update($N)", getDtoClassName, serviceVarName, updateDtoVarName).
-                addStatement("return $T.status($T.OK)\n.headers($T.createEntityUpdateAlert(ENTITY_NAME, result.getId().toString()))\n.body(result)", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("return $T.status($T.OK)\n.body(result)", ResponseEntity.class, HttpStatus.class).
                 returns(getResponseEntityTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -100,7 +94,7 @@ public class CreateResource {
                                 addMember("value", "\"id\"").
                                 build()).build()).
                 addStatement("$N.markDeleted(id)", serviceVarName).
-                addStatement("return $T.status($T.NO_CONTENT)\n.headers($T.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build()", ResponseEntity.class, HttpStatus.class, headerUtilClassName).
+                addStatement("return $T.status($T.NO_CONTENT).build()", ResponseEntity.class, HttpStatus.class).
                 returns(responseVoidTypeName).
                 addModifiers(Modifier.PUBLIC).
                 build();
@@ -122,13 +116,13 @@ public class CreateResource {
         ParameterizedTypeName listDtoTypeName = ParameterizedTypeName.get(ClassName.get(List.class), getDtoClassName);
         ParameterizedTypeName responseDtoTypeName = ParameterizedTypeName.get(ClassName.get(ResponseEntity.class), listDtoTypeName);
         ParameterizedTypeName pageDtoTypeName = ParameterizedTypeName.get(ClassName.get(Page.class), getDtoClassName);
-        ClassName paginationUtilClassName = ClassName.get(packageName + ".web.rest.util", "PaginationUtil");
+        ClassName paginationUtilClassName = ClassName.get("io.github.jhipster.web.util", "PaginationUtil");
         MethodSpec getAllDtoMethodSpec = MethodSpec.methodBuilder("getAll" + entityName).
                 addAnnotation(GetMapping.class).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 addStatement("$T page = $N.getAll(pageable)", pageDtoTypeName, serviceVarName).
-                addStatement("$T headers = $T.generatePaginationHttpHeaders(page, \"/api/ext-$L\")",
-                        HttpHeaders.class, paginationUtilClassName, resourceUriName).
+                addStatement("$T headers = $T.generatePaginationHttpHeaders($T.fromCurrentRequest(), page)",
+                        HttpHeaders.class, paginationUtilClassName, ServletUriComponentsBuilder.class).
                 addStatement("return new $T<>(page.getContent(), headers, $T.OK)", ResponseEntity.class, HttpStatus.class).
                 returns(responseDtoTypeName).
                 addModifiers(Modifier.PUBLIC).
@@ -154,8 +148,8 @@ public class CreateResource {
                         build()).
                 addParameter(ParameterSpec.builder(Pageable.class, "pageable").build()).
                 addStatement("$T page = $N.getAllDeleted(pageable)", pageDtoTypeName, serviceVarName).
-                addStatement("$T headers = $T.generatePaginationHttpHeaders(page, \"/api/ext-$L/deleted\")",
-                        HttpHeaders.class, paginationUtilClassName, resourceUriName).
+                addStatement("$T headers = $T.generatePaginationHttpHeaders($T.fromCurrentRequest(), page)",
+                        HttpHeaders.class, paginationUtilClassName, ServletUriComponentsBuilder.class).
                 addStatement("return new $T<>(page.getContent(), headers, $T.OK)", ResponseEntity.class, HttpStatus.class).
                 returns(responseDtoTypeName).
                 addModifiers(Modifier.PUBLIC).
@@ -181,11 +175,7 @@ public class CreateResource {
                 addAnnotation(AnnotationSpec.builder(RequestMapping.class).
                         addMember("value", "\"/api/ext-" + resourceUriName.toLowerCase() + "\"").
                         build()).
-                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build()).
                 addField(serviceField).
-                addField(entityNameFieldSpec).
                 addMethod(constructor).
                 addMethod(createMethodSpec).
                 addMethod(updateMethodSpec).

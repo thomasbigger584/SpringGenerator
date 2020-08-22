@@ -3,6 +3,7 @@ package com.twb.create;
 import com.squareup.javapoet.*;
 import com.twb.util.GenerationOptions;
 import com.twb.util.JavaPoetUtil;
+import lombok.Data;
 
 import javax.lang.model.element.Modifier;
 import javax.validation.constraints.Min;
@@ -31,8 +32,7 @@ public class CreateDto {
 
         TypeSpec.Builder dtoTypeSpecBuilder = TypeSpec.classBuilder(entityDto)
                 .addModifiers(Modifier.PUBLIC)
-                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
+                .addAnnotation(AnnotationSpec.builder(Data.class).
                         build());
 
         if (hasId) {
@@ -42,15 +42,7 @@ public class CreateDto {
                     addAnnotation(NotNull.class).
                     build();
             dtoTypeSpecBuilder.
-                    addField(idFieldSpec).
-                    addMethod(MethodSpec.methodBuilder("getId").
-                            addModifiers(Modifier.PUBLIC).
-                            returns(Long.class).
-                            addStatement("return id").build()).
-                    addMethod(MethodSpec.methodBuilder("setId").
-                            addModifiers(Modifier.PUBLIC).
-                            addParameter(Long.class, "id").
-                            addStatement("this.id = id").build());
+                    addField(idFieldSpec);
         }
 
         return JavaPoetUtil.buildJavaFile(dtoPackage, dtoTypeSpecBuilder.build());

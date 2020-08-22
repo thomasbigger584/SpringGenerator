@@ -34,9 +34,6 @@ public class CreateSearchRepository {
                 .addModifiers(Modifier.PUBLIC)
                 .addSuperinterface(superRepoClassName)
                 .addAnnotation(Repository.class)
-                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build())
                 .build();
 
         return JavaPoetUtil.buildJavaFile(repositoryPackage, jpaEntityTypeSpec);

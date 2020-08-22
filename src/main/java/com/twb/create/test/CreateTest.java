@@ -309,9 +309,6 @@ public class CreateTest {
                         build()).
                 addAnnotation(AnnotationSpec.builder(SpringBootTest.class)
                         .addMember("classes", "{$T.class, $T.class}", securityBeanConfigClassName, appClassName).build()).
-                addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build()).
                 addField(repoFieldSpec).
                 addField(serviceFieldSpec).
                 addField(jacksonFieldSpec).

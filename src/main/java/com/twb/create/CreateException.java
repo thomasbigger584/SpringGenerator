@@ -30,14 +30,11 @@ public class CreateException {
 
         MethodSpec constructorBuilder = MethodSpec.constructorBuilder().
                 addModifiers(Modifier.PUBLIC).
-                addStatement("super($T.ENTITY_NOT_FOUND_TYPE, \"" + entityName + " not found\", $T.NOT_FOUND)", constantsClassName, statusClassName).build();
+                addStatement("super($T.DEFAULT_TYPE, \"" + entityName + " not found\", $T.NOT_FOUND)", constantsClassName, statusClassName).build();
 
         TypeSpec jpaEntityTypeSpec = TypeSpec.classBuilder(exceptionName)
                 .addModifiers(Modifier.PUBLIC)
                 .superclass(superExceptionClassName)
-                .addAnnotation(AnnotationSpec.builder(SuppressWarnings.class).
-                        addMember("value", "\"unused\"").
-                        build())
                 .addMethod(constructorBuilder)
                 .build();
 
